@@ -1,0 +1,81 @@
+spring:
+  # Default profile is "dev" — local development keeps working with no environment
+  # variables set. Production runs with SPRING_PROFILES_ACTIVE=prod, which loads
+  # application-prod.yaml and requires every secret to come from the environment.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  datasource:
+    # No password is written in this file, not even for development — this file
+    # is in version control. Supply it either as the DB_PASSWORD environment
+    # variable, or in square-backend/config/application.yaml, which is
+    # gitignored and read automatically at startup. See DEPLOYMENT.md.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/square_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+    # HikariCP Connection Pool Settings (Handles heavy user loads)
+    hikari:
+      pool-name: SquareHikariCP
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN:5}
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      connection-timeout: 20000
+
+  # Flyway owns the schema now. Files in db/migration run in version order, once
+  # each, and are recorded in the flyway_schema_history table.
+  flyway:
+    enabled: true
+    # A database that already had these tables before Flyway existed (the local
+    # square_db, and any environment created with the old ddl-auto: update) is
+    # recorded as already being at V1 rather than having V1 re-run against it.
+    # On a genuinely empty database there is nothing to baseline, so V1 runs
+    # normally and builds the schema.
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: Existing schema adopted by Flyway
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      # Hibernate no longer changes the schema in ANY environment — it only
+      # checks that the tables Flyway built still match the entities. If you
+      # change an @Entity you must add a matching V2__*.sql, and this check is
+      # what tells you immediately (in development) that you forgot.
+      # Override with DDL_AUTO=update only for throwaway experiments.
+      ddl-auto: ${DDL_AUTO:validate}
+    show-sql: ${SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Never leak stack traces or internal messages in error responses
+  error:
+    include-stacktrace: never
+    include-message: never
+
+# Browser origins allowed to call this API (comma-separated).
+# Prod must set CORS_ORIGINS to the real frontend URL.
+square:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+
+# Health checks for whatever watches the service (load balancer, uptime monitor,
+# container orchestrator). Only /health is exposed — the other actuator
+# endpoints can disclose configuration and are deliberately left off.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # "when-authorized" would hide the database status from an unauthenticated
+      # monitor; this is the one endpoint meant to be readable by machines.
+      show-details: never
+      probes:
+        enabled: true

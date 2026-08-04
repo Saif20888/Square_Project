@@ -1,0 +1,36 @@
+# Production overrides — activated with SPRING_PROFILES_ACTIVE=prod.
+#
+# Every value below is intentionally WITHOUT a fallback default: if the
+# environment variable is missing the application refuses to start instead of
+# quietly running on a development password or an unsafe schema mode.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      # Hibernate may only CHECK that the schema matches the entities. It must
+      # never alter or drop production tables. See DEPLOYMENT.md for how to
+      # create the schema the first time.
+      ddl-auto: validate
+    # Never log every query in production (noise, slow, leaks data shape)
+    show-sql: false
+
+  # Demo/seed data must never be created in production — see BackendApplication,
+  # whose seeding runner is annotated @Profile("!prod").
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# Must be the real frontend origin, e.g. https://portal.squaregroup.com
+square:
+  cors:
+    allowed-origins: ${CORS_ORIGINS}
+
+logging:
+  level:
+    root: WARN
+    com.square.backend: INFO
+    org.hibernate.SQL: WARN

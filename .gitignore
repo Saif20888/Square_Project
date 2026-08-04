@@ -1,0 +1,38 @@
+# --- Build output ---
+target/
+node_modules/
+dist/
+
+# --- Secrets: never commit real credentials ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Spring Boot reads ./config/application.yaml automatically and it overrides the
+# one in src/main/resources. That is where local database passwords live.
+# Anchored with a leading slash on purpose: a bare "config/" would also match
+# the Java package src/main/java/com/square/backend/config and silently skip
+# any new class added there.
+/square-backend/config/
+
+# --- Database dumps ---
+# The backup/restore SCRIPTS are versioned; the dumps they produce are not.
+# They contain real employee records and password hashes, and are large.
+backups/*.backup
+backups/*.sql
+backups/*.dump
+backups/backup.log
+
+# --- Editors / OS ---
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Local tooling state ---
+# Machine-specific: launch.json points at absolute paths on one developer's
+# disk (including unrelated projects), and the lock file holds a live pid.
+.claude/
+.vscode/
