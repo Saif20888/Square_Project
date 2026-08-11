@@ -19,7 +19,7 @@ jobs:
     name: Backend (Java 21)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -46,7 +46,7 @@ jobs:
     name: Frontend (Node 20)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
@@ -90,7 +90,7 @@ jobs:
     name: Docker image build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Confirms the Render deployment image still builds — catches a broken
       # Dockerfile or a build-stage dependency issue before it reaches Render.
@@ -101,7 +101,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Catches a password or key committed by accident. Passwords belong in
       # environment variables or the gitignored square-backend/config/, never
