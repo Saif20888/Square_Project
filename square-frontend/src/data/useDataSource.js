@@ -13,6 +13,10 @@ const DEMO_KEY = "sq-demo-store-v5";
 // "server unreachable" while it's just cold-starting.
 const REQUEST_TIMEOUT_MS = 20000;
 
+// Demo mode only — local fake data, never sent anywhere. The live path gets
+// its temp password from the server instead (see onboardEmployee).
+const genDemoTempPassword = () => `TempPass${Math.floor(100 + Math.random() * 900)}!`;
+
 function loadDemoStore() {
   try {
     const raw = localStorage.getItem(DEMO_KEY);
@@ -554,9 +558,10 @@ export function useDataSource() {
         return { ok: false, error: "This Employee ID is already in use." };
       }
       const id = Math.max(0, ...all.map((x) => x.id)) + 1;
+      const tempPassword = genDemoTempPassword();
       const unit = payload.department === "HR and Admin" ? payload.unit || null : null;
       demoExtraUsers.current.push({
-        id, username: payload.email, password: payload.tempPassword,
+        id, username: payload.email, password: tempPassword,
         role: unit === "IT" || payload.employeeType === "IT Team" ? "IT_TECH" : "EMPLOYEE",
         name: payload.name, jobTitle: payload.designation, employeeId: payload.employeeId,
         department: payload.department, unit, email: payload.email, mobile: payload.mobile,
@@ -584,7 +589,7 @@ export function useDataSource() {
       }
       persistDemo();
       setUsers(demoUsers());
-      return { ok: true };
+      return { ok: true, tempPassword };
     }
     try {
       const res = await authFetch(`${API_BASE}/api/users`, {
@@ -594,8 +599,9 @@ export function useDataSource() {
         const d = await res.json().catch(() => null);
         return { ok: false, error: d?.message || "Couldn't onboard the employee." };
       }
+      const created = await res.json();
       await refresh({ silent: true });
-      return { ok: true };
+      return { ok: true, tempPassword: created.tempPassword };
     } catch { return { ok: false, error: "Couldn't reach the server." }; }
   }, [mode, refresh]);
 

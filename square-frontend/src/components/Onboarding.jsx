@@ -10,9 +10,6 @@ import { Btn, Modal } from "./primitives";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// e.g. "TempPass482!" — shown once in the success modal for the Superuser to copy
-const genTempPassword = () => `TempPass${Math.floor(100 + Math.random() * 900)}!`;
-
 export function OnboardingForm({ ds, user, notify }) {
   const deptNames = ds.departments.map((d) => d.name);
   const locNames = ds.locations.map((l) => l.name);
@@ -78,7 +75,6 @@ export function OnboardingForm({ ds, user, notify }) {
   const submit = async () => {
     if (!validateStep2()) return;
     setBusy(true);
-    const tempPassword = genTempPassword();
     const r = await ds.onboardEmployee({
       ...form,
       employeeId: form.employeeId.trim(), name: form.name.trim(), email: form.email.trim(),
@@ -88,12 +84,12 @@ export function OnboardingForm({ ds, user, notify }) {
       assetNumber: form.assetCategory === "Asset" ? form.assetNumber.trim() : null,
       prNumber: form.prNumber.trim(), supplierName: form.supplierName.trim(),
       originalValue: Number(form.price) || 0, warrantyExpiry: form.warrantyExpiry,
-      floor: Number(form.floor), serialNumber, tempPassword,
+      floor: Number(form.floor), serialNumber,
       managerUsername: user.username,
     });
     setBusy(false);
     if (r.ok) {
-      setCreds({ username: form.email.trim(), password: tempPassword });
+      setCreds({ username: form.email.trim(), password: r.tempPassword });
       setCopied(false);
     } else notify(r.error || "Couldn't onboard the employee.", "crit");
   };

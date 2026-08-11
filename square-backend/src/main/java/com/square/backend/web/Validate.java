@@ -16,7 +16,6 @@ public final class Validate {
 
     /** Longest value accepted for a normal text field — keeps oversized bodies out of the DB. */
     public static final int MAX_TEXT = 120;
-    public static final int MIN_PASSWORD = 8;
 
     public static String required(String value, String label) {
         if (value == null || value.isBlank()) {
@@ -40,14 +39,6 @@ public final class Validate {
         String v = value.trim();
         if (v.length() > MAX_TEXT) {
             throw new BadRequestException(label + " must be " + MAX_TEXT + " characters or fewer.");
-        }
-        return v;
-    }
-
-    public static String password(String value, String label) {
-        String v = required(value, label);
-        if (v.length() < MIN_PASSWORD) {
-            throw new BadRequestException(label + " must be at least " + MIN_PASSWORD + " characters long.");
         }
         return v;
     }

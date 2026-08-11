@@ -35,12 +35,6 @@ class ValidateTest {
     }
 
     @Test
-    void passwordMustMeetMinimumLength() {
-        assertThrows(BadRequestException.class, () -> Validate.password("short", "Password"));
-        assertDoesNotThrow(() -> Validate.password("longenough1", "Password"));
-    }
-
-    @Test
     void emailShapeIsChecked() {
         assertThrows(BadRequestException.class, () -> Validate.email("not-an-email", "E-mail"));
         assertThrows(BadRequestException.class, () -> Validate.email("missing@domain", "E-mail"));

@@ -71,7 +71,10 @@ public class UserController {
         // Guards throw BadRequestException, which ApiExceptionHandler turns into a 400
         String email = Validate.email(str(body.get("email")), "E-mail");
         String employeeId = Validate.optionalText(str(body.get("employeeId")), "Employee ID");
-        String tempPassword = Validate.password(str(body.get("tempPassword")), "Temporary password");
+        // Generated here, not trusted from the client — the onboarding form used to
+        // make one up itself with a "TempPassNNN!" pattern (900 possibilities, plain
+        // Math.random()). Reset-password already does this properly; match it.
+        String tempPassword = Validate.temporaryPassword();
         Validate.optionalText(str(body.get("name")), "Name");
         if (userRepository.findByUsername(email).isPresent()) {
             return ResponseEntity.status(409).body(Map.of("message", "An account with this e-mail already exists."));
@@ -130,7 +133,9 @@ public class UserController {
                     .userId(saved.getId())
                     .build());
         }
-        return ResponseEntity.ok(toView(saved));
+        Map<String, Object> view = toView(saved);
+        view.put("tempPassword", tempPassword);
+        return ResponseEntity.ok(view);
     }
 
     // Self-service profile edit from the My Account tab, and the Superuser's
