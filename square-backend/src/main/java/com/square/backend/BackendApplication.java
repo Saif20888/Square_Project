@@ -15,11 +15,12 @@ import com.square.backend.repository.UserRepository;
 import com.square.backend.web.Validate;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -510,7 +511,8 @@ public class BackendApplication {
     }
 
     // Passwords are stored as BCrypt hashes, never in plain text.
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(8);
+    @Autowired
+    private PasswordEncoder encoder;
 
     private User withProfile(User user, String name, String jobTitle, String managerUsername, int daysWorking, String department) {
         user.setPassword(encoder.encode(user.getPassword()));

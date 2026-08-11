@@ -1,7 +1,7 @@
-package com.square.backend.repository; // Added .backend here
+package com.square.backend.repository;
 
-import com.square.backend.model.Asset;       // Added .backend here
-import com.square.backend.model.AssetStatus; // Added .backend here
+import com.square.backend.model.Asset;
+import com.square.backend.model.AssetStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

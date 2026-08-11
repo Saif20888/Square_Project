@@ -1,4 +1,4 @@
-package com.square.backend.config; // Added .backend here
+package com.square.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -15,8 +15,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/offboarding")
 @RequiresRole({ Roles.SUPERVISOR })
-
-    public class OffboardingController {
+public class OffboardingController {
 
     @Autowired
     private OffboardingService offboardingService;

@@ -43,6 +43,6 @@ public class AuditController {
         if (actor != null && !actor.isBlank()) {
             return repository.findByActorUsernameOrderByAtDesc(actor.trim(), pageable).getContent();
         }
-        return repository.findTop200ByOrderByAtDesc();
+        return repository.findAllByOrderByAtDesc(pageable).getContent();
     }
 }

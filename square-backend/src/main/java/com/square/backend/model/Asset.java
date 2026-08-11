@@ -1,4 +1,4 @@
-package com.square.backend.model; // Added .backend here
+package com.square.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -47,14 +47,9 @@ public class Asset {
 
     private LocalDate purchaseDate;
     private LocalDate warrantyExpiry;
-    private String invoiceUrl;
 
     @Column(name = "user_id")
     private Long userId;
-
-    @Column(name = "location_id")
-    private Long locationId;
-
 
     private double originalValue;
     private int usefulLifeYears;

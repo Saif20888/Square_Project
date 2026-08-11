@@ -10,6 +10,7 @@ import com.square.backend.service.AuditService;
 import com.square.backend.security.CurrentUser;
 import com.square.backend.security.RequiresRole;
 import com.square.backend.security.Roles;
+import com.square.backend.web.ApiExceptionHandler.BadRequestException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 
@@ -35,6 +37,10 @@ public class AssetController {
     @Autowired
     private AssetService assetService;
 
+    /** Upper bound on a device's declared price — blocks an absurd/negative value
+     *  from distorting the capitalized-value total the Admin dashboard shows. */
+    private static final double MAX_ASSET_VALUE = 1_000_000;
+
     // Plain array by default; ?page=0&size=50 pages, totals in X-Total-* headers.
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getAllAssets(
@@ -47,8 +53,9 @@ public class AssetController {
     }
 
     @GetMapping("/{id}")
-    public Map<String, Object> getAsset(@PathVariable Long id) {
-        return assetRepository.findById(id).map(this::toView).orElse(null);
+    public ResponseEntity<Map<String, Object>> getAsset(@PathVariable Long id) {
+        return assetRepository.findById(id).map(a -> ResponseEntity.ok(toView(a)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     // Device registration. With a userId it's the employee's "+ Add device";
@@ -58,7 +65,7 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> registerDevice(@RequestBody Map<String, Object> body) {
         Object rawUserId = body.get("userId");
         boolean toInventory = rawUserId == null;
-        Long targetUserId = rawUserId == null ? null : Long.valueOf(rawUserId.toString());
+        Long targetUserId = parseUserId(rawUserId);
         // Adding brand-new stock to the pool is IT-only; assigning a device to a
         // person is either that person doing their own "+ Add device", or IT/a
         // Supervisor doing it on someone else's behalf (e.g. during onboarding).
@@ -70,6 +77,7 @@ public class AssetController {
         Object rawPrice = body.get("originalValue");
         double price = 0;
         try { if (rawPrice != null) price = Double.parseDouble(rawPrice.toString()); } catch (NumberFormatException ignored) {}
+        price = Math.min(MAX_ASSET_VALUE, Math.max(0, price));
         Asset asset = Asset.builder()
                 .serialNumber(String.valueOf(body.get("serialNumber")))
                 .deviceType(String.valueOf(body.get("deviceType")))
@@ -101,7 +109,7 @@ public class AssetController {
             audit.record(AuditService.ASSET_SCRAPPED, updated.getSerialNumber(),
                     "Scrapped " + updated.getDeviceType() + " — reason: " + body.get("reason"));
             return ResponseEntity.ok(toView(updated));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -110,13 +118,12 @@ public class AssetController {
     @PutMapping("/{id}/assign")
     public ResponseEntity<Map<String, Object>> assignAsset(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
-            Object rawUserId = body.get("userId");
-            Long userId = rawUserId == null ? null : Long.valueOf(rawUserId.toString());
+            Long userId = parseUserId(body.get("userId"));
             Asset updated = assetService.assign(id, userId);
             audit.record(AuditService.ASSET_ASSIGNED, updated.getSerialNumber(),
                     "Assigned " + updated.getDeviceType() + " to user id " + userId);
             return ResponseEntity.ok(toView(updated));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -126,9 +133,9 @@ public class AssetController {
     @PutMapping("/{id}/loan")
     public ResponseEntity<Map<String, Object>> loanAsset(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
-            Long userId = body.get("userId") == null ? null : Long.valueOf(body.get("userId").toString());
+            Long userId = parseUserId(body.get("userId"));
             return ResponseEntity.ok(toView(assetService.loan(id, userId)));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -139,7 +146,7 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> sendToRepair(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
             return ResponseEntity.ok(toView(assetService.sendToRepair(id, body.get("shop"))));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -150,7 +157,7 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> warrantyReplace(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
             return ResponseEntity.ok(toView(assetService.warrantyReplace(id, body.get("newSerial"))));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -162,7 +169,7 @@ public class AssetController {
         try {
             boolean fixed = Boolean.parseBoolean(String.valueOf(body.get("fixed")));
             return ResponseEntity.ok(toView(assetService.repairReturn(id, fixed)));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -172,9 +179,9 @@ public class AssetController {
     @PutMapping("/{id}/request-assign")
     public ResponseEntity<Map<String, Object>> requestAssign(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
-            Long userId = body.get("userId") == null ? null : Long.valueOf(body.get("userId").toString());
+            Long userId = parseUserId(body.get("userId"));
             return ResponseEntity.ok(toView(assetService.requestAssign(id, userId)));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -185,7 +192,7 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> receiveDevice(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
             return ResponseEntity.ok(toView(assetService.receive(id, body.get("storage"))));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -197,7 +204,7 @@ public class AssetController {
         try {
             boolean approve = Boolean.parseBoolean(String.valueOf(body.get("approve")));
             return ResponseEntity.ok(toView(assetService.approveAssign(id, approve)));
-        } catch (RuntimeException e) {
+        } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
     }
@@ -239,5 +246,14 @@ public class AssetController {
         if (o == null) return null;
         String s = o.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    private Long parseUserId(Object raw) {
+        if (raw == null) return null;
+        try {
+            return Long.valueOf(raw.toString());
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("userId must be a number.");
+        }
     }
 }

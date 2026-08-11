@@ -1,7 +1,6 @@
-package com.square.backend.model; // Added .backend here
+package com.square.backend.model;
 
 public enum AssetStatus {
-    PROCURED,
     AVAILABLE_IN_POOL,
     ALLOCATED_IN_USE,
     UNDER_REVIEW,

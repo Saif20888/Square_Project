@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -38,7 +38,8 @@ public class AuthController {
     @Autowired
     private RateLimiter rateLimiter;
 
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    @Autowired
+    private PasswordEncoder encoder;
 
     // Brute-force lockout: 5 wrong passwords locks the account for 10 minutes
     private record Attempts(int count, Instant lockedUntil) {}
@@ -108,8 +109,9 @@ public class AuthController {
         String username = body.get("username") == null ? "" : body.get("username").trim();
         if (!username.isEmpty()) {
             userRepository.findByUsername(username).ifPresent(user -> {
-                boolean alreadyPending = notificationRepository.findByStatusOrderByDueAtAsc("PENDING").stream()
-                        .anyMatch(n -> "PASSWORD_RESET".equals(n.getType()) && user.getUsername().equals(n.getEmployeeUsername()));
+                boolean alreadyPending = !notificationRepository
+                        .findByStatusAndTypeAndEmployeeUsername("PENDING", "PASSWORD_RESET", user.getUsername())
+                        .isEmpty();
                 if (!alreadyPending) {
                     notificationRepository.save(Notification.builder()
                             .type("PASSWORD_RESET")

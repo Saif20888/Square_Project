@@ -34,6 +34,15 @@ public class ApiExceptionHandler {
         public BadRequestException(String message) { super(message); }
     }
 
+    /** Thrown when a request is well-formed but conflicts with the record's current
+     *  state (e.g. approving an assignment that's already been decided) — the
+     *  message IS shown, mirrors {@link BadRequestException} but maps to 409 so the
+     *  client can tell "your input was wrong" apart from "someone else already
+     *  changed this". */
+    public static class ConflictException extends RuntimeException {
+        public ConflictException(String message) { super(message); }
+    }
+
     private static ResponseEntity<Map<String, String>> body(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("message", message));
     }
@@ -41,6 +50,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<Map<String, String>> handleBadRequest(BadRequestException ex) {
         return body(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String, String>> handleConflict(ConflictException ex) {
+        return body(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     /** @Valid failures — report the first field error in plain language. */

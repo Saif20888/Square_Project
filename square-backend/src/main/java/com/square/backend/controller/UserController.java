@@ -5,6 +5,8 @@ import com.square.backend.model.AssetStatus;
 import com.square.backend.model.Notification;
 import com.square.backend.model.User;
 import com.square.backend.repository.AssetRepository;
+import com.square.backend.repository.DepartmentRepository;
+import com.square.backend.repository.LocationRepository;
 import com.square.backend.repository.NotificationRepository;
 import com.square.backend.repository.UserRepository;
 import com.square.backend.security.CurrentUser;
@@ -12,11 +14,13 @@ import com.square.backend.service.AuditService;
 import com.square.backend.security.RequiresRole;
 import com.square.backend.security.Roles;
 import com.square.backend.security.TokenStore;
+import com.square.backend.web.ApiExceptionHandler.BadRequestException;
 import com.square.backend.web.Paging;
 import com.square.backend.web.Validate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -44,12 +48,19 @@ public class UserController {
     private NotificationRepository notificationRepository;
 
     @Autowired
+    private DepartmentRepository departmentRepository;
+
+    @Autowired
+    private LocationRepository locationRepository;
+
+    @Autowired
     private TokenStore tokenStore;
 
     @Autowired
     private AuditService audit;
 
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(8);
+    @Autowired
+    private PasswordEncoder encoder;
 
     // Returns a plain array, as it always has. Add ?page=0&size=50 to page
     // through instead; the totals come back in the X-Total-* headers.
@@ -67,6 +78,9 @@ public class UserController {
     // generated temporary password) and, if a device was allocated, the asset.
     @RequiresRole({ Roles.SUPERVISOR })
     @PostMapping
+    // Creates the User and (optionally) the Asset as two separate saves — without
+    // this, a failure partway through leaves an account with no device or vice versa.
+    @Transactional
     public ResponseEntity<?> onboard(@RequestBody Map<String, Object> body) {
         // Guards throw BadRequestException, which ApiExceptionHandler turns into a 400
         String email = Validate.email(str(body.get("email")), "E-mail");
@@ -79,14 +93,18 @@ public class UserController {
         if (userRepository.findByUsername(email).isPresent()) {
             return ResponseEntity.status(409).body(Map.of("message", "An account with this e-mail already exists."));
         }
-        if (employeeId != null && userRepository.findAll().stream()
-                .anyMatch(u -> employeeId.equalsIgnoreCase(u.getEmployeeId()))) {
+        if (employeeId != null && userRepository.existsByEmployeeIdIgnoreCase(employeeId)) {
             return ResponseEntity.status(409).body(Map.of("message", "This Employee ID is already in use."));
         }
+        // The frontend only ever offers these from the org-structure dropdowns, but
+        // a direct API call could send anything — checked here as defense-in-depth,
+        // not because the UI needs it.
+        requireKnownDepartment(str(body.get("department")));
+        requireKnownLocation(str(body.get("location")));
 
         // Within HR and Admin, the IT unit joins the IT Team; everyone else is a User
-        String unit = "HR and Admin".equals(str(body.get("department"))) ? str(body.get("unit")) : null;
-        String role = "IT".equals(unit) || "IT Team".equals(str(body.get("employeeType"))) ? "IT_TECH" : "EMPLOYEE";
+        String unit = deriveUnit(str(body.get("department")), str(body.get("unit")));
+        String role = deriveRole(unit, str(body.get("employeeType")));
         User u = new User(email, encoder.encode(tempPassword), role);
         u.setName(str(body.get("name")));
         u.setEmployeeId(employeeId);
@@ -158,10 +176,16 @@ public class UserController {
             if (body.containsKey("dob")) u.setDob(parseDate(body.get("dob")));
             if (body.containsKey("mobile")) u.setMobile(str(body.get("mobile")));
             if (body.containsKey("phone")) u.setPhone(str(body.get("phone")));
-            if (body.containsKey("location")) u.setLocation(str(body.get("location")));
+            if (body.containsKey("location")) {
+                requireKnownLocation(str(body.get("location")));
+                u.setLocation(str(body.get("location")));
+            }
             if (body.containsKey("floor")) u.setFloor(parseInt(body.get("floor")));
             if (body.containsKey("jobTitle")) u.setJobTitle(str(body.get("jobTitle")));
-            if (body.containsKey("department")) u.setDepartment(str(body.get("department")));
+            if (body.containsKey("department")) {
+                requireKnownDepartment(str(body.get("department")));
+                u.setDepartment(str(body.get("department")));
+            }
             if (body.containsKey("unit")) u.setUnit("HR and Admin".equals(u.getDepartment()) ? str(body.get("unit")) : null);
             return ResponseEntity.ok(toView(userRepository.save(u)));
         }).orElse(ResponseEntity.notFound().build());
@@ -187,10 +211,15 @@ public class UserController {
             }
             u.setPassword(encoder.encode(next));
             userRepository.save(u);
-            // Any other session opened with the old password is no longer trusted
+            // Every session opened with the old password is no longer trusted —
+            // including the one making this request — so issue a fresh token in the
+            // same response. Without this the browser keeps using the now-revoked
+            // token and gets bounced to login with a confusing "session expired"
+            // error seconds after being told the change succeeded.
             tokenStore.revokeAllFor(u.getUsername());
+            String freshToken = tokenStore.issue(u);
             audit.record(AuditService.PASSWORD_CHANGED, u.getUsername(), "Changed their own password");
-            return ResponseEntity.ok(Map.of("status", "SUCCESS"));
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "token", freshToken));
         }).orElse(ResponseEntity.notFound().build());
     }
 
@@ -204,11 +233,10 @@ public class UserController {
             u.setPassword(encoder.encode(temp));
             userRepository.save(u);
             tokenStore.revokeAllFor(u.getUsername());
-            for (Notification n : notificationRepository.findByStatusOrderByDueAtAsc("PENDING")) {
-                if ("PASSWORD_RESET".equals(n.getType()) && u.getUsername().equals(n.getEmployeeUsername())) {
-                    n.setStatus("DONE");
-                    notificationRepository.save(n);
-                }
+            for (Notification n : notificationRepository.findByStatusAndTypeAndEmployeeUsername(
+                    "PENDING", "PASSWORD_RESET", u.getUsername())) {
+                n.setStatus("DONE");
+                notificationRepository.save(n);
             }
             audit.record(AuditService.PASSWORD_RESET, u.getUsername(),
                     "Issued a temporary password to " + (u.getName() == null ? u.getUsername() : u.getName()));
@@ -227,14 +255,19 @@ public class UserController {
         m.put("unit", u.getUnit());
         m.put("offboarded", u.isOffboarded());
         m.put("jobTitle", u.getJobTitle());
-        m.put("email", u.getEmail());
-        m.put("phone", u.getPhone());
-        m.put("mobile", u.getMobile());
-        m.put("dob", u.getDob());
         m.put("location", u.getLocation());
         m.put("floor", u.getFloor());
         m.put("joinedAt", u.getJoinedAt());
         m.put("managerUsername", u.getManagerUsername());
+        // DOB/personal mobile/phone/e-mail are for the Superuser's roster and each
+        // person's own record — the directory itself (open to every signed-in
+        // person) doesn't need to carry them for everyone else's row.
+        if (CurrentUser.isSelfOrAdmin(u.getId()) || CurrentUser.hasRole(Roles.SUPERVISOR)) {
+            m.put("email", u.getEmail());
+            m.put("phone", u.getPhone());
+            m.put("mobile", u.getMobile());
+            m.put("dob", u.getDob());
+        }
         return m;
     }
 
@@ -242,6 +275,33 @@ public class UserController {
         if (o == null) return null;
         String s = o.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    // A "unit" only exists within the HR and Admin department (HR / Admin / IT) —
+    // anyone else's unit field is meaningless and dropped.
+    static String deriveUnit(String department, String unit) {
+        return "HR and Admin".equals(department) ? unit : null;
+    }
+
+    // IT_TECH grants real authority over repair/loan/receive endpoints, so this
+    // decides who gets it: either the IT unit within HR and Admin, or an explicit
+    // "IT Team" employee type for departments that don't use the unit system.
+    // Being in a department merely named "IT" grants nothing on its own — it has
+    // to come through one of these two paths.
+    static String deriveRole(String unit, String employeeType) {
+        return "IT".equals(unit) || "IT Team".equals(employeeType) ? Roles.IT_TECH : Roles.EMPLOYEE;
+    }
+
+    private void requireKnownDepartment(String name) {
+        if (name != null && departmentRepository.findByNameIgnoreCase(name).isEmpty()) {
+            throw new BadRequestException("Unknown department: " + name);
+        }
+    }
+
+    private void requireKnownLocation(String name) {
+        if (name != null && locationRepository.findByNameIgnoreCase(name).isEmpty()) {
+            throw new BadRequestException("Unknown office: " + name);
+        }
     }
 
     private LocalDate parseDate(Object o) {
