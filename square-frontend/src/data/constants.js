@@ -213,13 +213,31 @@ export const SEED_TICKETS = [
 ];
 
 let _aid = 0;
-const A = (over) => ({
-  id: ++_aid, serialNumber: "", deviceType: "", deviceKind: null, specifications: "", status: "ALLOCATED_IN_USE",
-  warrantyDaysRemaining: 0, userId: null, purchaseDate: null, originalValue: 0, usefulLifeYears: 4,
-  poolCondition: null, isLoaner: false, loanerIssuedAt: null, repairShop: null, sentToRepairAt: null,
-  pendingUserId: null, prNumber: null, assetCategory: null, assetNumber: null, supplierName: null,
-  department: null, storageLocation: null, scrapReason: null, scrappedAt: null, ...over,
-});
+// Seed assets are authored as a fixed "days remaining" for readability, but that
+// number would otherwise freeze the moment the module loads — unlike the live
+// backend, which recomputes warranty from the purchase/expiry date on every
+// request. Store the absolute expiry instead so demo mode can recompute the
+// same way (see withFreshWarranty), keeping the countdown accurate across days.
+const A = (over) => {
+  const days = over.warrantyDaysRemaining ?? 0;
+  return {
+    id: ++_aid, serialNumber: "", deviceType: "", deviceKind: null, specifications: "", status: "ALLOCATED_IN_USE",
+    warrantyDaysRemaining: days, warrantyExpiry: dateDaysAgo(-days), userId: null, purchaseDate: null, originalValue: 0, usefulLifeYears: 4,
+    poolCondition: null, isLoaner: false, loanerIssuedAt: null, repairShop: null, sentToRepairAt: null,
+    pendingUserId: null, prNumber: null, assetCategory: null, assetNumber: null, supplierName: null,
+    department: null, storageLocation: null, scrapReason: null, scrappedAt: null, ...over,
+  };
+};
+
+// Recomputes warrantyDaysRemaining from the stored absolute expiry so demo-mode
+// assets count down in real time instead of showing a stale value from whenever
+// the seed/asset was created. Assets without an expiry (older persisted demo
+// stores, or live data) pass through unchanged.
+export function withFreshWarranty(asset) {
+  if (!asset.warrantyExpiry) return asset;
+  const warrantyDaysRemaining = Math.round((new Date(asset.warrantyExpiry).getTime() - Date.now()) / 86400000);
+  return { ...asset, warrantyDaysRemaining };
+}
 
 const GEN_TYPES = ["Model X Laptop", "Standard Desktop", "SQUARE Mobile Unit"];
 const GEN_SPECS = ["Core i7 · 16GB RAM · 512GB NVMe", "Ryzen 5 · 16GB RAM · 512GB SSD", "5G · 256GB storage"];

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Home, DollarSign, BarChart3, Server, FileText, Layers, Users, Activity, ShieldAlert, Radio, Clock, Zap, CheckCircle2, UserRound, LogOut } from "lucide-react";
 import { API_BASE, money } from "../data/constants";
-import { authFetch } from "../data/useDataSource";
+import { authFetch, REQUEST_TIMEOUT_MS } from "../data/useDataSource";
 import { assetValuation, activityFeed, FEED_ICON, FEED_TONE } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
 import { Stat, Empty, Bar, StatusBadge } from "../components/primitives";
@@ -39,7 +39,7 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await authFetch(`${API_BASE}/api/admin/health`, { signal: AbortSignal.timeout?.(3000) });
+        const res = await authFetch(`${API_BASE}/api/admin/health`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (!res.ok) throw new Error("bad status");
         const data = await res.json();
         if (!cancelled) { setHealth(data); setHealthError(false); }

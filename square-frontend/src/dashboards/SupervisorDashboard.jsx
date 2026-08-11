@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Home, Users, Layers, Trash2, ChevronRight, FileText, Search, Radio, Mail, Phone, Clock, PackagePlus, Check, X, AlertTriangle, Building2, Undo2, UserPlus, UserRound, LogOut, Eye, Settings, UserCog, Crown, HardDrive, Upload, KeyRound, Copy } from "lucide-react";
 import { money, DESIGNATIONS, TOP_DESIGNATIONS, UNIQUE_DESIGNATIONS, COMMON_DESIGNATIONS, ROLE_LABEL, PENDING_ALERT_DAYS, floorsFor } from "../data/constants";
 import { oversightMatrix, warrantyLedger, scrapRegistry, pendingAssignments, yearsOfService, departmentAssets, agingTickets } from "../data/derived";
@@ -49,6 +49,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignDeviceId, setAssignDeviceId] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
+  const [decideBusyId, setDecideBusyId] = useState(null);
 
   // Keep the oversight matrix fresh without a manual reload
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
     return () => clearInterval(id);
   }, [view, ds.refresh]);
 
-  const oversightAll = oversightMatrix(ds.tickets, ds.users);
+  const oversightAll = useMemo(() => oversightMatrix(ds.tickets, ds.users), [ds.tickets, ds.users]);
   const ovQ = ovSearch.trim().toLowerCase();
   const oversight = oversightAll.filter((t) => {
     if (ovStatus !== "ALL" && t.status !== ovStatus) return false;
@@ -89,7 +90,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
       || (p.department || "").toLowerCase().includes(q)
       || p.username.toLowerCase().includes(q);
   });
-  const deptNames = ds.departments.map((d) => d.name);
+  const deptNames = useMemo(() => ds.departments.map((d) => d.name), [ds.departments]);
   // Every department must hold each unique designation once and each common one
   // at least once — anything absent is flagged as missing.
   const missingFor = (deptName) => {
@@ -102,17 +103,18 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
     .map((d) => ({ department: d, people: matchedRoster.filter((p) => p.department === d), missing: missingFor(d) }))
     .filter((g) => (filtersActive ? g.people.length > 0 : true));
   const availableDevices = ds.assets.filter((a) => a.status === "AVAILABLE_IN_POOL");
-  const warranty = warrantyLedger(ds.assets).filter((a) => {
+  const warrantyAll = useMemo(() => warrantyLedger(ds.assets), [ds.assets]);
+  const warranty = warrantyAll.filter((a) => {
     if (wf === "ACTIVE" && !(a.warrantyDaysRemaining > 0)) return false;
     if (wf === "EXPIRED" && !(a.warrantyDaysRemaining <= 0)) return false;
     const q = wfSearch.trim().toLowerCase();
     if (!q) return true;
     return a.deviceType.toLowerCase().includes(q) || a.serialNumber.toLowerCase().includes(q);
   });
-  const scrapped = scrapRegistry(ds.assets);
-  const pending = pendingAssignments(ds.assets, ds.users);
-  const departments = departmentAssets(ds.users, ds.assets, deptNames);
-  const aging = agingTickets(ds.tickets, PENDING_ALERT_DAYS);
+  const scrapped = useMemo(() => scrapRegistry(ds.assets), [ds.assets]);
+  const pending = useMemo(() => pendingAssignments(ds.assets, ds.users), [ds.assets, ds.users]);
+  const departments = useMemo(() => departmentAssets(ds.users, ds.assets, deptNames), [ds.users, ds.assets, deptNames]);
+  const aging = useMemo(() => agingTickets(ds.tickets, PENDING_ALERT_DAYS), [ds.tickets]);
   const resetRequests = (ds.notifications || []).filter((n) => n.type === "PASSWORD_RESET");
 
   const doResetPassword = async (req) => {
@@ -143,7 +145,9 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
   const handleSelect = (k) => { if (k === "signout") setSignOutOpen(true); else setView(k); };
 
   const decide = async (asset, approve) => {
+    setDecideBusyId(asset.id);
     const r = await ds.approveAssignment(asset.id, approve);
+    setDecideBusyId(null);
     if (r.ok) notify(approve ? `${asset.serialNumber} assigned to ${asset.targetName}.` : `Request rejected — ${asset.serialNumber} returned to the inventory.`, "ok");
     else notify("Couldn't process the decision.", "crit");
   };
@@ -512,7 +516,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
 
         {view === "org" && <OrgPanel ds={ds} notify={notify} />}
 
-        {view === "import" && <ImportPanel ds={ds} notify={notify} />}
+        {view === "import" && <ImportPanel ds={ds} notify={notify} user={user} />}
 
         {view === "mydevices" && <MyDevicesPanel ds={ds} user={user} notify={notify} />}
 
@@ -535,8 +539,8 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
                       <div className="sq-cell-desc">New device from inventory for <strong>{a.targetName}</strong>{a.specifications ? ` · ${a.specifications}` : ""}</div>
                     </div>
                     <div className="sq-approval-actions">
-                      <Btn variant="success" size="sm" icon={Check} onClick={() => decide(a, true)}>Accept</Btn>
-                      <Btn variant="danger" size="sm" icon={X} onClick={() => decide(a, false)}>Reject</Btn>
+                      <Btn variant="success" size="sm" icon={Check} onClick={() => decide(a, true)} disabled={decideBusyId === a.id}>Accept</Btn>
+                      <Btn variant="danger" size="sm" icon={X} onClick={() => decide(a, false)} disabled={decideBusyId === a.id}>Reject</Btn>
                     </div>
                   </div>
                 ))}

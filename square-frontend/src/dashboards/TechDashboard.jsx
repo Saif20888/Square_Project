@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive } from "lucide-react";
 import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
@@ -20,6 +20,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const [acceptTarget, setAcceptTarget] = useState(null);
   const [acceptedBy, setAcceptedBy] = useState("");
   const [acceptBusy, setAcceptBusy] = useState(false);
+  const [rejectBusyId, setRejectBusyId] = useState(null);
 
   // Hardware-malfunction resolve flow: fixed -> return to employee;
   // not fixed -> issue a loaner + route to a repair shop by warranty.
@@ -65,15 +66,15 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
 
   const openQueue = ds.tickets.filter((t) => t.status === "OPEN").sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   const solving = ds.tickets.filter((t) => t.status === "SOLVING").sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  const pool = poolSummary(ds.assets);
+  const pool = useMemo(() => poolSummary(ds.assets), [ds.assets]);
   // Inventory = brand-new stock only; the loaner pool holds used, repaired and old devices.
   const inventoryAssets = ds.assets.filter((a) => a.status === "AVAILABLE_IN_POOL" && a.poolCondition === "NEW");
   const loanerPoolAssets = ds.assets.filter((a) => a.status === "AVAILABLE_IN_POOL" && a.poolCondition !== "NEW");
-  const loaners = loanerLedger(ds.assets, ds.users);
-  const ledger = technicianLedger(ds.tickets, ds.users);
-  const repairs = repairLog(ds.assets, ds.users);
-  const pending = pendingAssignments(ds.assets, ds.users);
-  const scrapped = scrapRegistry(ds.assets);
+  const loaners = useMemo(() => loanerLedger(ds.assets, ds.users), [ds.assets, ds.users]);
+  const ledger = useMemo(() => technicianLedger(ds.tickets, ds.users), [ds.tickets, ds.users]);
+  const repairs = useMemo(() => repairLog(ds.assets, ds.users), [ds.assets, ds.users]);
+  const pending = useMemo(() => pendingAssignments(ds.assets, ds.users), [ds.assets, ds.users]);
+  const scrapped = useMemo(() => scrapRegistry(ds.assets), [ds.assets]);
   const techNames = ds.users.filter((u) => u.role === "IT_TECH").map((u) => u.name);
   // Device notifications only — password-reset requests belong to the Superuser
   const notifs = (ds.notifications || []).filter((n) => n.type !== "PASSWORD_RESET").map((n) => {
@@ -81,7 +82,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     return { ...n, dueInDays, due: dueInDays <= 0 };
   });
   const dueNotifs = notifs.filter((n) => n.due);
-  const records = monthlyRecords(ds.tickets, ds.users);
+  const records = useMemo(() => monthlyRecords(ds.tickets, ds.users), [ds.tickets, ds.users]);
   const activeMonth = recordMonth || records.months[0] || "";
   const monthRows = records.rows[activeMonth] || [];
 
@@ -140,7 +141,12 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     if (r.ok) { notify("Ticket accepted — status set to Solving.", "ok"); setAcceptTarget(null); }
     else notify("Couldn't accept the ticket.", "crit");
   };
-  const doReject = async (id) => { const r = await ds.reject(id); notify(r.ok ? "Ticket rejected." : "Couldn't reject.", r.ok ? "ok" : "crit"); };
+  const doReject = async (id) => {
+    setRejectBusyId(id);
+    const r = await ds.reject(id);
+    setRejectBusyId(null);
+    notify(r.ok ? "Ticket rejected." : "Couldn't reject.", r.ok ? "ok" : "crit");
+  };
 
   // Employee assign pool: the popup states how many days the device was out
   const confirmLoanerReturn = async () => {
@@ -306,8 +312,8 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         <div className="sq-cell-desc">{t.description}</div>
                       </div>
                       <div className="sq-approval-actions">
-                        <Btn variant="success" size="sm" icon={UserCheck} onClick={() => openAccept(t)}>Accept</Btn>
-                        <Btn variant="danger" size="sm" icon={X} onClick={() => doReject(t.id)}>Reject</Btn>
+                        <Btn variant="success" size="sm" icon={UserCheck} onClick={() => openAccept(t)} disabled={rejectBusyId === t.id}>Accept</Btn>
+                        <Btn variant="danger" size="sm" icon={X} onClick={() => doReject(t.id)} disabled={rejectBusyId === t.id}>Reject</Btn>
                       </div>
                     </div>
                   );

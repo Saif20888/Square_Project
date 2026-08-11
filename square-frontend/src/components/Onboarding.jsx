@@ -27,9 +27,6 @@ export function OnboardingForm({ ds, user, notify }) {
   const [creds, setCreds] = useState(null); // { username, password }
   const [copied, setCopied] = useState(false);
 
-  // Auto-generated serial number for the record being created
-  const serialNumber = `SL-${String(ds.users.length + 1).padStart(4, "0")}`;
-
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
 
   const validateStep1 = () => {
@@ -84,7 +81,7 @@ export function OnboardingForm({ ds, user, notify }) {
       assetNumber: form.assetCategory === "Asset" ? form.assetNumber.trim() : null,
       prNumber: form.prNumber.trim(), supplierName: form.supplierName.trim(),
       originalValue: Number(form.price) || 0, warrantyExpiry: form.warrantyExpiry,
-      floor: Number(form.floor), serialNumber,
+      floor: Number(form.floor),
       managerUsername: user.username,
     });
     setBusy(false);
@@ -128,14 +125,12 @@ export function OnboardingForm({ ds, user, notify }) {
         {step === 1 ? (
           <div className="sq-form">
             <div className="sq-form-row">
-              {field("serialNumber", "Serial Number (auto)",
-                <input className="sq-input" value={serialNumber} readOnly disabled />)}
               {field("employeeId", "Employee ID (unique)",
                 <input className="sq-input" value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} placeholder="e.g. SQ-EMP-0100" />)}
-            </div>
-            <div className="sq-form-row">
               {field("name", "Name",
                 <input className="sq-input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Ayesha Siddiqua" />)}
+            </div>
+            <div className="sq-form-row">
               {field("dob", "DOB",
                 <input className="sq-input" type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} />)}
             </div>

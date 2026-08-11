@@ -132,9 +132,7 @@ const normCategory = (v) => {
   return t.includes("non") ? "Non-Asset" : t.includes("asset") ? "Asset" : null;
 };
 
-const genTempPassword = () => `TempPass${Math.floor(100 + Math.random() * 900)}!`;
-
-export function ImportPanel({ ds, notify }) {
+export function ImportPanel({ ds, notify, user }) {
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
   const [fileName, setFileName] = useState("");
@@ -496,15 +494,14 @@ export function ImportPanel({ ds, notify }) {
         if (batch.entity === "employees") {
           if (!rec.name || !rec.email || !looksLikeEmail(rec.email)) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Missing name or valid e-mail" }); continue; }
           if (ds.users.some((u) => u.username === rec.email) || ok.some((o) => o.key === rec.email)) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: `${rec.email} already exists` }); continue; }
-          const tempPassword = genTempPassword();
           const r = await ds.onboardEmployee({
             name: rec.name, email: rec.email, employeeId: rec.employeeId || null,
             designation: rec.designation, department: rec.department || deptNames[0],
             unit: rec.department === HR_ADMIN_DEPT ? rec.unit || "HR" : null,
             mobile: rec.mobile, phone: rec.phone, dob: rec.dob,
-            location: rec.location, floor: rec.floor, tempPassword, managerUsername: "manager1",
+            location: rec.location, floor: rec.floor, managerUsername: user?.username || null,
           });
-          if (r.ok) { ok.push({ key: rec.email, text: `${rec.name} → ${rec.department || deptNames[0]}${rec.unit ? ` (${rec.unit} unit)` : ""} as ${rec.designation || "—"}` }); creds.push({ user: rec.email, pass: tempPassword }); }
+          if (r.ok) { ok.push({ key: rec.email, text: `${rec.name} → ${rec.department || deptNames[0]}${rec.unit ? ` (${rec.unit} unit)` : ""} as ${rec.designation || "—"}` }); creds.push({ user: rec.email, pass: r.tempPassword }); }
           else skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: r.error || "Server rejected the record" });
         } else {
           if (!rec.serialNumber || !rec.deviceName) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Missing serial or device name" }); continue; }

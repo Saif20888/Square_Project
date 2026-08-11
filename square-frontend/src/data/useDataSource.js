@@ -1,21 +1,24 @@
 import { useState, useRef, useCallback } from "react";
-import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo } from "./constants";
+import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty } from "./constants";
 
 /* ================================================================================= */
 /*  Data layer — network with graceful demo fallback                                 */
 /*  Demo-mode changes are persisted to localStorage so they survive a page reload,   */
 /*  behaving like a permanent database until the seed version changes.               */
 /* ================================================================================= */
-const DEMO_KEY = "sq-demo-store-v5";
+const DEMO_KEY = "sq-demo-store-v6";
 
 // Free-tier hosts (e.g. Render) sleep the backend after idle and can take
 // 30-50s to wake on the next request — a tight timeout here would misreport
 // "server unreachable" while it's just cold-starting.
-const REQUEST_TIMEOUT_MS = 20000;
+export const REQUEST_TIMEOUT_MS = 20000;
 
 // Demo mode only — local fake data, never sent anywhere. The live path gets
 // its temp password from the server instead (see onboardEmployee).
 const genDemoTempPassword = () => `TempPass${Math.floor(100 + Math.random() * 900)}!`;
+
+// Demo mode uses client-generated ids since there's no backend sequence.
+const nextId = (arr) => Math.max(0, ...arr.map((x) => x.id)) + 1;
 
 function loadDemoStore() {
   try {
@@ -123,8 +126,8 @@ export function useDataSource() {
       try {
         const ar = await authFetch(`${API_BASE}/api/assets`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ar.ok) setAssets(await ar.json());
-        else setAssets(SEED_ASSETS);
-      } catch { setAssets(SEED_ASSETS); }
+        else setAssets(SEED_ASSETS.map(withFreshWarranty));
+      } catch { setAssets(SEED_ASSETS.map(withFreshWarranty)); }
       try {
         const ur = await authFetch(`${API_BASE}/api/users`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ur.ok) setUsers(await ur.json());
@@ -150,7 +153,7 @@ export function useDataSource() {
       // fake data during a real outage would hide the outage from everyone.
       if (!DEMO_FALLBACK_ENABLED) { setMode("offline"); return; }
       setTickets(ensureDemo().map((t) => ({ ...t })));
-      setAssets(ensureDemoAssets().map((a) => ({ ...a })));
+      setAssets(ensureDemoAssets().map((a) => withFreshWarranty({ ...a })));
       setUsers(demoUsers());
       setNotifications(pendingDemoNotifications().map((n) => ({ ...n })));
       ensureStore();
@@ -218,7 +221,7 @@ export function useDataSource() {
       const store = ensureDemoAssets();
       const data = demoApply(store);
       persistDemo();
-      setAssets(store.map((a) => ({ ...a })));
+      setAssets(store.map((a) => withFreshWarranty({ ...a })));
       return { ok: true, data };
     }
     try {
@@ -318,7 +321,7 @@ export function useDataSource() {
       }
       demoNotifications.current.forEach((n) => { if (n.assetId === id && n.status === "PENDING") n.status = "DONE"; });
       persistDemo();
-      setAssets(store.map((x) => ({ ...x })));
+      setAssets(store.map((x) => withFreshWarranty({ ...x })));
       setNotifications(pendingDemoNotifications().map((n) => ({ ...n })));
       return { ok: true };
     }
@@ -357,10 +360,8 @@ export function useDataSource() {
   const registerDevice = (payload) =>
     mutateAsset(`/api/assets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
       (store) => {
-        const id = Math.max(0, ...store.map((a) => a.id)) + 1;
-        const warrantyDaysRemaining = payload.warrantyExpiry
-          ? Math.round((new Date(payload.warrantyExpiry).getTime() - Date.now()) / 86400000)
-          : 0;
+        const id = nextId(store);
+        const warrantyExpiry = payload.warrantyExpiry || dateDaysAgo(-365);
         const toInventory = payload.userId == null;
         const asset = {
           id, serialNumber: payload.serialNumber, deviceType: payload.deviceType, deviceKind: payload.deviceKind || null,
@@ -369,7 +370,7 @@ export function useDataSource() {
           ipAddress: payload.ipAddress || null, specifications: payload.specifications || "",
           status: toInventory ? "AVAILABLE_IN_POOL" : "ALLOCATED_IN_USE", userId: payload.userId ?? null,
           purchaseDate: new Date().toISOString().slice(0, 10),
-          warrantyDaysRemaining: payload.warrantyExpiry ? warrantyDaysRemaining : 365,
+          warrantyExpiry, warrantyDaysRemaining: Math.round((new Date(warrantyExpiry).getTime() - Date.now()) / 86400000),
           originalValue: Number(payload.originalValue) || 0, usefulLifeYears: 4,
           poolCondition: toInventory ? "NEW" : null, isLoaner: false,
           loanerIssuedAt: null, repairShop: null, sentToRepairAt: null, pendingUserId: null, scrapReason: null, scrappedAt: null,
@@ -386,6 +387,7 @@ export function useDataSource() {
         const a = store.find((x) => x.id === id); if (!a) return;
         if (newSerial && newSerial.trim()) a.serialNumber = newSerial.trim();
         a.status = a.userId != null ? "ALLOCATED_IN_USE" : "AVAILABLE_IN_POOL";
+        a.warrantyExpiry = dateDaysAgo(-365);
         a.warrantyDaysRemaining = 365;
         a.purchaseDate = new Date().toISOString().slice(0, 10);
         a.repairShop = null; a.sentToRepairAt = null;
@@ -485,7 +487,7 @@ export function useDataSource() {
       ensureStore();
       const u = demoUsers().find((x) => x.id === userId);
       if (!u) return { ok: false };
-      const temp = `TempPass${Math.floor(100 + Math.random() * 900)}!`;
+      const temp = genDemoTempPassword();
       demoProfile.current[u.username] = { ...(demoProfile.current[u.username] || {}), password: temp };
       demoNotifications.current.forEach((n) => {
         if (n.type === "PASSWORD_RESET" && n.employeeUsername === u.username && n.status === "PENDING") n.status = "DONE";
@@ -530,6 +532,7 @@ export function useDataSource() {
       const u = demoUsers().find((x) => x.id === id);
       if (!u) return { ok: false, error: "Account not found." };
       if (u.password !== currentPassword) return { ok: false, error: "Current password is incorrect." };
+      if (!newPassword || newPassword.length < 8) return { ok: false, error: "New password must be at least 8 characters." };
       demoProfile.current[u.username] = { ...(demoProfile.current[u.username] || {}), password: newPassword };
       persistDemo();
       return { ok: true };
@@ -539,7 +542,16 @@ export function useDataSource() {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
-      if (res.ok) return { ok: true };
+      if (res.ok) {
+        // Changing the password revokes every existing session, including the
+        // one making this request — without picking up the fresh token the
+        // backend now returns, the next silent refresh finds a dead token and
+        // bounces the user to login with a confusing "session expired" error
+        // seconds after being told the change succeeded.
+        const d = await res.json().catch(() => null);
+        if (d?.token) setToken(d.token);
+        return { ok: true };
+      }
       const d = await res.json().catch(() => null);
       return { ok: false, error: d?.message || "Couldn't update the password." };
     } catch { return { ok: false, error: "Couldn't reach the server." }; }
@@ -557,7 +569,7 @@ export function useDataSource() {
       if (payload.employeeId && all.some((x) => (x.employeeId || "").toLowerCase() === payload.employeeId.toLowerCase())) {
         return { ok: false, error: "This Employee ID is already in use." };
       }
-      const id = Math.max(0, ...all.map((x) => x.id)) + 1;
+      const id = nextId(all);
       const tempPassword = genDemoTempPassword();
       const unit = payload.department === "HR and Admin" ? payload.unit || null : null;
       demoExtraUsers.current.push({
@@ -571,21 +583,19 @@ export function useDataSource() {
       });
       if (payload.deviceName) {
         const store = ensureDemoAssets();
-        const aid = Math.max(0, ...store.map((a) => a.id)) + 1;
-        const warrantyDays = payload.warrantyExpiry
-          ? Math.round((new Date(payload.warrantyExpiry).getTime() - Date.now()) / 86400000)
-          : 365;
+        const aid = nextId(store);
+        const warrantyExpiry = payload.warrantyExpiry || dateDaysAgo(-365);
         store.unshift({
           id: aid, serialNumber: payload.assetNumber || `SQ-${payload.employeeId || "U" + id}`,
           deviceType: payload.deviceName, deviceKind: payload.deviceKind || null, specifications: "",
-          status: "ALLOCATED_IN_USE", warrantyDaysRemaining: warrantyDays, userId: id,
+          status: "ALLOCATED_IN_USE", warrantyExpiry, warrantyDaysRemaining: Math.round((new Date(warrantyExpiry).getTime() - Date.now()) / 86400000), userId: id,
           purchaseDate: new Date().toISOString().slice(0, 10), originalValue: Number(payload.originalValue) || 0, usefulLifeYears: 4,
           poolCondition: null, isLoaner: false, loanerIssuedAt: null, repairShop: null, sentToRepairAt: null,
           pendingUserId: null, prNumber: payload.prNumber || null, assetCategory: payload.assetCategory || null,
           assetNumber: payload.assetNumber || null, supplierName: payload.supplierName || null, department: payload.department || null,
           ipAddress: payload.ipAddress || null, storageLocation: null, scrapReason: null, scrappedAt: null,
         });
-        setAssets(store.map((a) => ({ ...a })));
+        setAssets(store.map((a) => withFreshWarranty({ ...a })));
       }
       persistDemo();
       setUsers(demoUsers());
@@ -633,7 +643,7 @@ export function useDataSource() {
       const plan = { employeeUsername, decision, note, holdUntil: decision === "RETAIN_14_DAY" ? dateDaysAgo(-14) : null, createdAt: new Date().toISOString() };
       demoOffboarding.current[employeeUsername] = plan;
       persistDemo();
-      setAssets(store.map((a) => ({ ...a })));
+      setAssets(store.map((a) => withFreshWarranty({ ...a })));
       setUsers(demoUsers());
       setNotifications(pendingDemoNotifications().map((n) => ({ ...n })));
       return { ok: true, plan };

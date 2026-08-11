@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 import { Check, X, Copy, Inbox, CheckCircle2, AlertCircle, Activity } from "lucide-react";
 import { STATUS_META, LIFECYCLE, STEP_LABEL } from "../data/constants";
@@ -84,22 +84,49 @@ export function Stepper({ status }) {
   );
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({ open, onClose, title, sub, children }) {
+  const titleId = useId();
+  const modalRef = useRef(null);
+  const restoreFocusRef = useRef(null);
+
+  // Keyboard handling: Escape closes, Tab is trapped inside the dialog.
   useEffect(() => {
     if (!open) return;
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = modalRef.current.querySelectorAll(FOCUSABLE);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [open, onClose]);
+
+  // On open: remember what had focus and move focus into the dialog.
+  // On close: give focus back so keyboard/screen-reader users aren't dropped at <body>.
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement;
+    const focusable = modalRef.current?.querySelectorAll(FOCUSABLE);
+    (focusable?.[0] || modalRef.current)?.focus();
+    return () => { restoreFocusRef.current?.focus?.(); };
+  }, [open]);
+
   if (!open) return null;
   // Rendered as a portal on <body>: an ancestor with a transform/filter (e.g. an
   // animated section) would otherwise trap the fixed backdrop inside its own box.
   return createPortal(
     <div className="sq-backdrop" onMouseDown={onClose}>
-      <div className="sq-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="sq-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={modalRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="sq-modal-head">
           <div>
-            <h3 className="sq-modal-title">{title}</h3>
+            <h3 className="sq-modal-title" id={titleId}>{title}</h3>
             {sub && <p className="sq-modal-sub">{sub}</p>}
           </div>
           <button className="sq-icon-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
