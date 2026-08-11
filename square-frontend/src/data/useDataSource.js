@@ -8,6 +8,11 @@ import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS,
 /* ================================================================================= */
 const DEMO_KEY = "sq-demo-store-v5";
 
+// Free-tier hosts (e.g. Render) sleep the backend after idle and can take
+// 30-50s to wake on the next request — a tight timeout here would misreport
+// "server unreachable" while it's just cold-starting.
+const REQUEST_TIMEOUT_MS = 20000;
+
 function loadDemoStore() {
   try {
     const raw = localStorage.getItem(DEMO_KEY);
@@ -102,7 +107,7 @@ export function useDataSource() {
     const silent = opts?.silent;
     if (!silent) setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/api/tickets`, { signal: AbortSignal.timeout?.(3500) });
+      const res = await authFetch(`${API_BASE}/api/tickets`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
       // Token rejected (e.g. server restarted and wiped in-memory tokens) — this
       // is NOT a network outage, so don't fall to demo. Clear creds and force login.
       if (res.status === 401) { setToken(""); setSessionExpired(true); return; }
@@ -112,28 +117,28 @@ export function useDataSource() {
       setMode("live");
       // assets/users are optional on the backend; try, but never block
       try {
-        const ar = await authFetch(`${API_BASE}/api/assets`, { signal: AbortSignal.timeout?.(3000) });
+        const ar = await authFetch(`${API_BASE}/api/assets`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ar.ok) setAssets(await ar.json());
         else setAssets(SEED_ASSETS);
       } catch { setAssets(SEED_ASSETS); }
       try {
-        const ur = await authFetch(`${API_BASE}/api/users`, { signal: AbortSignal.timeout?.(3000) });
+        const ur = await authFetch(`${API_BASE}/api/users`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ur.ok) setUsers(await ur.json());
         else setUsers(SEED_USERS);
       } catch { setUsers(SEED_USERS); }
       try {
-        const nr = await authFetch(`${API_BASE}/api/notifications`, { signal: AbortSignal.timeout?.(3000) });
+        const nr = await authFetch(`${API_BASE}/api/notifications`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (nr.ok) setNotifications(await nr.json());
         else setNotifications([]);
       } catch { setNotifications([]); }
       try {
-        const lr = await authFetch(`${API_BASE}/api/org/locations`, { signal: AbortSignal.timeout?.(3000) });
+        const lr = await authFetch(`${API_BASE}/api/org/locations`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (lr.ok) { const d = await lr.json(); if (d.length) setLocations(d); }
-        const dr = await authFetch(`${API_BASE}/api/org/departments`, { signal: AbortSignal.timeout?.(3000) });
+        const dr = await authFetch(`${API_BASE}/api/org/departments`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (dr.ok) { const d = await dr.json(); if (d.length) setDepartments(d); }
       } catch { /* org lists keep their defaults */ }
       try {
-        const ir = await authFetch(`${API_BASE}/api/import-logs`, { signal: AbortSignal.timeout?.(3000) });
+        const ir = await authFetch(`${API_BASE}/api/import-logs`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ir.ok) setImportLogs(await ir.json());
       } catch { /* history stays as-is */ }
     } catch {
@@ -158,7 +163,7 @@ export function useDataSource() {
     try {
       const res = await authFetch(`${API_BASE}/api/auth/login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }), signal: AbortSignal.timeout?.(3500),
+        body: JSON.stringify({ username, password }), signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS),
       });
       if (res.ok) {
         const d = await res.json();
@@ -449,7 +454,7 @@ export function useDataSource() {
     try {
       const res = await authFetch(`${API_BASE}/api/auth/forgot`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username }), signal: AbortSignal.timeout?.(3500),
+        body: JSON.stringify({ username }), signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS),
       });
       if (res.ok) return { ok: true };
       throw new Error("unreachable");
