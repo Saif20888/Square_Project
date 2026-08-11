@@ -187,7 +187,14 @@ public class UserController {
                 u.setDepartment(str(body.get("department")));
             }
             if (body.containsKey("unit")) u.setUnit("HR and Admin".equals(u.getDepartment()) ? str(body.get("unit")) : null);
-            return ResponseEntity.ok(toView(userRepository.save(u)));
+            User saved = userRepository.save(u);
+            // Self-edits of your own contact details aren't privileged; only a
+            // Superuser changing someone's position/place in the org is audit-worthy.
+            if (manager) {
+                audit.record(AuditService.PROFILE_UPDATED, saved.getUsername(),
+                        "Updated by " + CurrentUser.username() + " — " + saved.getJobTitle() + " · " + saved.getDepartment());
+            }
+            return ResponseEntity.ok(toView(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 

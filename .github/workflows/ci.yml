@@ -9,6 +9,11 @@ on:
     branches: [ main, master ]
   pull_request:
 
+# Least-privilege default: none of these jobs need to write to the repo,
+# open issues, or touch other permissions GITHUB_TOKEN can carry.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (Java 21)
@@ -58,6 +63,15 @@ jobs:
         working-directory: square-frontend
         run: npm run lint
 
+      # Surfaces high/critical advisories in the log without failing the build:
+      # xlsx (used for the import/export feature) currently has a high-severity
+      # advisory with no fix published on npm, which would otherwise redden
+      # every run. Treat this as something to review, not a hard gate.
+      - name: Audit dependencies
+        working-directory: square-frontend
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Production build
         working-directory: square-frontend
         run: npm run build
@@ -71,6 +85,17 @@ jobs:
             exit 1
           fi
           echo "No credentials in the bundle."
+
+  docker:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Confirms the Render deployment image still builds — catches a broken
+      # Dockerfile or a build-stage dependency issue before it reaches Render.
+      - name: Build backend image
+        run: docker build -t square-backend:ci square-backend
 
   secrets:
     name: Secret scan

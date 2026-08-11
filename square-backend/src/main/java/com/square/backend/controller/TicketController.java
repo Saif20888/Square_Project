@@ -3,6 +3,7 @@ package com.square.backend.controller;
 import com.square.backend.model.Ticket;
 import com.square.backend.repository.TicketRepository;
 import com.square.backend.repository.UserRepository;
+import com.square.backend.service.AuditService;
 import com.square.backend.service.TicketService;
 import com.square.backend.web.Paging;
 import com.square.backend.web.ApiExceptionHandler.BadRequestException;
@@ -30,6 +31,9 @@ public class TicketController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private AuditService audit;
 
     // Plain array by default; ?page=0&size=50 pages, totals in X-Total-* headers.
     @GetMapping
@@ -98,7 +102,10 @@ public class TicketController {
     @PutMapping("/{id}/resolve")
     public ResponseEntity<Map<String, Object>> resolveTicket(@PathVariable Long id) {
         try {
-            return ResponseEntity.ok(toView(ticketService.resolveTicket(id)));
+            Ticket resolved = ticketService.resolveTicket(id);
+            audit.record(AuditService.TICKET_RESOLVED, "TKT-" + resolved.getId(),
+                    "Resolved by " + resolved.getAcceptedBy());
+            return ResponseEntity.ok(toView(resolved));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }

@@ -3,6 +3,7 @@ package com.square.backend.controller;
 import com.square.backend.model.OffboardingDecision;
 import com.square.backend.model.OffboardingRecord;
 import com.square.backend.repository.OffboardingRepository;
+import com.square.backend.service.AuditService;
 import com.square.backend.service.OffboardingService;
 import com.square.backend.security.RequiresRole;
 import com.square.backend.security.Roles;
@@ -23,6 +24,9 @@ public class OffboardingController {
     @Autowired
     private OffboardingRepository offboardingRepository;
 
+    @Autowired
+    private AuditService audit;
+
     @PostMapping
     public ResponseEntity<?> createPlan(@RequestBody Map<String, String> body) {
         try {
@@ -30,6 +34,7 @@ public class OffboardingController {
             OffboardingDecision decision = OffboardingDecision.valueOf(body.get("decision"));
             String note = body.get("note");
             OffboardingRecord record = offboardingService.createPlan(employeeUsername, decision, note);
+            audit.record(AuditService.OFFBOARDING_SUBMITTED, employeeUsername, "Decision: " + decision);
             return ResponseEntity.ok(record);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

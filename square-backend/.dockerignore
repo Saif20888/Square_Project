@@ -1,3 +1,9 @@
 target/
 config/
 *.log
+.env
+.env.*
+.git/
+.idea/
+.vscode/
+*.iml

@@ -17,8 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/notifications")
 @RequiresRole({ Roles.IT_TECH, Roles.SUPERVISOR })
-
-    public class NotificationController {
+public class NotificationController {
 
     @Autowired
     private NotificationRepository notificationRepository;

@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/square-backend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/square-frontend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/square-backend"
+    schedule:
+      interval: "weekly"

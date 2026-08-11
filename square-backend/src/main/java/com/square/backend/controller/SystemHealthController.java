@@ -22,8 +22,7 @@ import java.util.concurrent.Executor;
 @RestController
 @RequestMapping("/api/admin/health")
 @RequiresRole({ Roles.SYSTEM_ADMIN })
-
-    public class SystemHealthController {
+public class SystemHealthController {
 
     @Autowired
     private DataSource dataSource;

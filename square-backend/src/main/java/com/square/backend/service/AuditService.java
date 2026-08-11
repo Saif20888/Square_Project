@@ -32,6 +32,13 @@ public class AuditService {
     public static final String ASSET_SCRAPPED = "ASSET_SCRAPPED";
     public static final String ASSET_ASSIGNED = "ASSET_ASSIGNED";
     public static final String ASSET_REGISTERED = "ASSET_REGISTERED";
+    public static final String ASSET_LOANED = "ASSET_LOANED";
+    public static final String ASSET_SENT_TO_REPAIR = "ASSET_SENT_TO_REPAIR";
+    public static final String ASSET_REPAIR_RETURNED = "ASSET_REPAIR_RETURNED";
+    public static final String ASSET_WARRANTY_REPLACED = "ASSET_WARRANTY_REPLACED";
+    public static final String ASSET_RECEIVED = "ASSET_RECEIVED";
+    public static final String ASSET_ASSIGN_REQUESTED = "ASSET_ASSIGN_REQUESTED";
+    public static final String ASSET_ASSIGN_DECIDED = "ASSET_ASSIGN_DECIDED";
     public static final String OFFBOARDING_SUBMITTED = "OFFBOARDING_SUBMITTED";
     public static final String ORG_CHANGED = "ORG_CHANGED";
     public static final String TICKET_RESOLVED = "TICKET_RESOLVED";

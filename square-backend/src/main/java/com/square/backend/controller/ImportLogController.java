@@ -17,8 +17,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/import-logs")
 @RequiresRole({ Roles.SUPERVISOR })
-
-    public class ImportLogController {
+public class ImportLogController {
 
     @Autowired
     private ImportLogRepository importLogRepository;

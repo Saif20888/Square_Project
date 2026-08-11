@@ -98,6 +98,8 @@ public class AssetController {
                 .usefulLifeYears(4)
                 .build();
         Asset saved = assetRepository.save(asset);
+        audit.record(AuditService.ASSET_REGISTERED, saved.getSerialNumber(),
+                (toInventory ? "Added to inventory: " : "Registered for user id " + targetUserId + ": ") + saved.getDeviceType());
         return ResponseEntity.ok(toView(saved));
     }
 
@@ -134,7 +136,9 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> loanAsset(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
             Long userId = parseUserId(body.get("userId"));
-            return ResponseEntity.ok(toView(assetService.loan(id, userId)));
+            Asset updated = assetService.loan(id, userId);
+            audit.record(AuditService.ASSET_LOANED, updated.getSerialNumber(), "Issued as a loaner to user id " + userId);
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -145,7 +149,9 @@ public class AssetController {
     @PutMapping("/{id}/repair")
     public ResponseEntity<Map<String, Object>> sendToRepair(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
-            return ResponseEntity.ok(toView(assetService.sendToRepair(id, body.get("shop"))));
+            Asset updated = assetService.sendToRepair(id, body.get("shop"));
+            audit.record(AuditService.ASSET_SENT_TO_REPAIR, updated.getSerialNumber(), "Sent to " + body.get("shop"));
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -156,7 +162,9 @@ public class AssetController {
     @PutMapping("/{id}/warranty-replace")
     public ResponseEntity<Map<String, Object>> warrantyReplace(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
-            return ResponseEntity.ok(toView(assetService.warrantyReplace(id, body.get("newSerial"))));
+            Asset updated = assetService.warrantyReplace(id, body.get("newSerial"));
+            audit.record(AuditService.ASSET_WARRANTY_REPLACED, updated.getSerialNumber(), "Received a warranty replacement");
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -168,7 +176,10 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> repairReturn(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
             boolean fixed = Boolean.parseBoolean(String.valueOf(body.get("fixed")));
-            return ResponseEntity.ok(toView(assetService.repairReturn(id, fixed)));
+            Asset updated = assetService.repairReturn(id, fixed);
+            audit.record(AuditService.ASSET_REPAIR_RETURNED, updated.getSerialNumber(),
+                    fixed ? "Returned from repair, fixed" : "Returned from repair, not fixed — scrapped");
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -180,7 +191,9 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> requestAssign(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
             Long userId = parseUserId(body.get("userId"));
-            return ResponseEntity.ok(toView(assetService.requestAssign(id, userId)));
+            Asset updated = assetService.requestAssign(id, userId);
+            audit.record(AuditService.ASSET_ASSIGN_REQUESTED, updated.getSerialNumber(), "Requested for user id " + userId);
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -191,7 +204,9 @@ public class AssetController {
     @PutMapping("/{id}/receive")
     public ResponseEntity<Map<String, Object>> receiveDevice(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
-            return ResponseEntity.ok(toView(assetService.receive(id, body.get("storage"))));
+            Asset updated = assetService.receive(id, body.get("storage"));
+            audit.record(AuditService.ASSET_RECEIVED, updated.getSerialNumber(), "Received into storage: " + body.get("storage"));
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
@@ -203,7 +218,9 @@ public class AssetController {
     public ResponseEntity<Map<String, Object>> approveAssign(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
             boolean approve = Boolean.parseBoolean(String.valueOf(body.get("approve")));
-            return ResponseEntity.ok(toView(assetService.approveAssign(id, approve)));
+            Asset updated = assetService.approveAssign(id, approve);
+            audit.record(AuditService.ASSET_ASSIGN_DECIDED, updated.getSerialNumber(), approve ? "Assignment approved" : "Assignment rejected");
+            return ResponseEntity.ok(toView(updated));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
