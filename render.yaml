@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: square-backend
+    runtime: docker
+    dockerfilePath: ./square-backend/Dockerfile
+    dockerContext: ./square-backend
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

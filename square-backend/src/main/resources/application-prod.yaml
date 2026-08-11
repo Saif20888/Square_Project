@@ -22,7 +22,9 @@ spring:
   # whose seeding runner is annotated @Profile("!prod").
 
 server:
-  port: ${SERVER_PORT:8080}
+  # Render (and most PaaS hosts) inject PORT and require binding to it;
+  # SERVER_PORT stays as the override for hosts that don't.
+  port: ${PORT:${SERVER_PORT:8080}}
 
 # Must be the real frontend origin, e.g. https://portal.squaregroup.com
 square:

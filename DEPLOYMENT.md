@@ -191,6 +191,62 @@ top of the ten-minute lockout after five wrong passwords for one account. If
 you run behind a reverse proxy, make sure it sets `X-Forwarded-For`, and add
 rate limiting there too so abusive traffic never reaches the application.
 
+## 4c. Free deploy for a demo (Render + Neon + Vercel)
+
+For showing this to people, not for real production traffic. All three tiers
+below are free with no credit card. Everything here is account setup in each
+provider's dashboard — nothing to install locally.
+
+**1. Database — Neon** (neon.tech)
+
+1. Sign up, create a project. Default branch/database is fine — or name the
+   database `square_db` to match local convention.
+2. Copy the connection details from the dashboard. Neon gives you a single
+   connection string like
+   `postgresql://user:pass@ep-xxx.neon.tech/square_db?sslmode=require` — split
+   it into `DB_URL` (`jdbc:postgresql://ep-xxx.neon.tech/square_db?sslmode=require`),
+   `DB_USERNAME`, `DB_PASSWORD`. Keep `sslmode=require` — Neon rejects
+   unencrypted connections.
+
+**2. Backend — Render** (render.com)
+
+A `render.yaml` blueprint is already in the repo root, plus a `Dockerfile` in
+`square-backend/`.
+
+1. Sign up, connect your GitHub account, select this repo.
+2. "New +" → "Blueprint" → pick this repo. Render reads `render.yaml` and
+   creates the web service automatically (Docker build, free plan, health
+   check on `/actuator/health`).
+3. It will prompt for the env vars marked `sync: false`: `DB_URL`,
+   `DB_USERNAME`, `DB_PASSWORD` (from Neon, above), `CORS_ORIGINS` (fill in
+   after step 3 below, can edit later), `ADMIN_USERNAME`, `ADMIN_PASSWORD`
+   (12+ chars — this becomes your first login).
+4. Deploy. First build takes a few minutes. Note the service URL Render
+   gives you, e.g. `https://square-backend-xxxx.onrender.com`.
+5. **Free-plan caveat:** the service sleeps after 15 minutes idle. The first
+   request after that wakes it up and takes 30–50 seconds. Fine for an async
+   demo link; open it yourself a minute before a live walkthrough so it's warm.
+
+**3. Frontend — Vercel** (vercel.com)
+
+1. Sign up, connect GitHub, import this repo.
+2. Set the project root to `square-frontend`. Framework preset "Vite" is
+   auto-detected; build command `npm run build`, output `dist`.
+3. Add environment variable `VITE_API_BASE` = your Render backend URL from
+   step 2.4 (no trailing slash). Deploy.
+4. Note the Vercel URL, e.g. `https://square-portal.vercel.app`.
+
+**4. Close the loop**
+
+Go back to the Render service's environment settings and set `CORS_ORIGINS`
+to the exact Vercel URL from step 3.4. Redeploy the backend (Render does this
+automatically on env var changes). Without this the frontend loads but every
+API call is blocked by CORS.
+
+Sign in at the Vercel URL with `ADMIN_USERNAME` / `ADMIN_PASSWORD`, change the
+password immediately (per §2 above — this rotates the bootstrap credential
+out).
+
 ## 5. Known limitations
 
 Be aware of these before scaling up:
