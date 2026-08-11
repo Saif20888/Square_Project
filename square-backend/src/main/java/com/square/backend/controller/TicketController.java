@@ -4,6 +4,7 @@ import com.square.backend.model.Ticket;
 import com.square.backend.repository.TicketRepository;
 import com.square.backend.service.TicketService;
 import com.square.backend.web.Paging;
+import com.square.backend.security.CurrentUser;
 import com.square.backend.security.RequiresRole;
 import com.square.backend.security.Roles;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,23 +35,19 @@ public class TicketController {
     // Every ticket routes straight to IT — no priority, no supervisor approval gate.
     @PostMapping
     public ResponseEntity<?> createTicket(@RequestBody Ticket ticket) {
-        try {
-            if (ticket.getProblemType() == null || ticket.getProblemType().isEmpty()) {
-                ticket.setProblemType("Other");
-            }
-            if (ticket.getDescription() == null || ticket.getDescription().isEmpty()) {
-                ticket.setDescription(ticket.getProblemType());
-            }
-            ticket.setStatus("OPEN");
-            ticket.setAcceptedBy(null);
-            ticket.setResolvedAt(null);
-
-            Ticket savedTicket = ticketRepository.save(ticket);
-            return ResponseEntity.ok(savedTicket);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Internal DB Write Failure: " + e.getMessage());
+        if (ticket.getProblemType() == null || ticket.getProblemType().isEmpty()) {
+            ticket.setProblemType("Other");
         }
+        if (ticket.getDescription() == null || ticket.getDescription().isEmpty()) {
+            ticket.setDescription(ticket.getProblemType());
+        }
+        ticket.setRaisedByUsername(CurrentUser.username());
+        ticket.setStatus("OPEN");
+        ticket.setAcceptedBy(null);
+        ticket.setResolvedAt(null);
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+        return ResponseEntity.ok(savedTicket);
     }
 
     // A technician accepts an open ticket, naming who's working it

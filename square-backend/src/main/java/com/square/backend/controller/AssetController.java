@@ -7,6 +7,7 @@ import com.square.backend.repository.AssetRepository;
 import com.square.backend.web.Paging;
 import com.square.backend.service.AssetService;
 import com.square.backend.service.AuditService;
+import com.square.backend.security.CurrentUser;
 import com.square.backend.security.RequiresRole;
 import com.square.backend.security.Roles;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,11 +57,19 @@ public class AssetController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> registerDevice(@RequestBody Map<String, Object> body) {
         Object rawUserId = body.get("userId");
+        boolean toInventory = rawUserId == null;
+        Long targetUserId = rawUserId == null ? null : Long.valueOf(rawUserId.toString());
+        // Adding brand-new stock to the pool is IT-only; assigning a device to a
+        // person is either that person doing their own "+ Add device", or IT/a
+        // Supervisor doing it on someone else's behalf (e.g. during onboarding).
+        boolean itStaff = CurrentUser.hasRole(Roles.IT_TECH, Roles.SUPERVISOR);
+        if (toInventory ? !itStaff : (!itStaff && !CurrentUser.isSelfOrAdmin(targetUserId))) {
+            return ResponseEntity.status(403).body(Map.of("message", "You are not allowed to register this device."));
+        }
         Object rawWarrantyExpiry = body.get("warrantyExpiry");
         Object rawPrice = body.get("originalValue");
         double price = 0;
         try { if (rawPrice != null) price = Double.parseDouble(rawPrice.toString()); } catch (NumberFormatException ignored) {}
-        boolean toInventory = rawUserId == null;
         Asset asset = Asset.builder()
                 .serialNumber(String.valueOf(body.get("serialNumber")))
                 .deviceType(String.valueOf(body.get("deviceType")))
@@ -76,7 +85,7 @@ public class AssetController {
                 .poolCondition(toInventory ? AssetCondition.NEW : null)
                 .purchaseDate(LocalDate.now())
                 .warrantyExpiry(rawWarrantyExpiry == null ? LocalDate.now().plusDays(365) : LocalDate.parse(rawWarrantyExpiry.toString()))
-                .userId(rawUserId == null ? null : Long.valueOf(rawUserId.toString()))
+                .userId(targetUserId)
                 .originalValue(price)
                 .usefulLifeYears(4)
                 .build();

@@ -34,3 +34,13 @@ logging:
     root: WARN
     com.square.backend: INFO
     org.hibernate.SQL: WARN
+  # Without this, prod logs only go to stdout — lost or unbounded unless the
+  # process supervisor happens to capture and rotate it. Rotate by size/day and
+  # cap total disk use so a busy day can't fill the deploy volume.
+  file:
+    name: ${LOG_FILE:./logs/square-backend.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 30
+      total-size-cap: 500MB

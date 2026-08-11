@@ -38,6 +38,7 @@ Copy `square-backend/.env.example` and fill it in:
 | `ADMIN_USERNAME` | first boot | Username of the first System admin |
 | `ADMIN_PASSWORD` | first boot | At least 12 characters |
 | `SERVER_PORT` | no | Defaults to 8080 |
+| `LOG_FILE` | no | Defaults to `./logs/square-backend.log`; rotated at 20MB/30 days, capped at 500MB total |
 
 `CORS_ORIGINS` accepts a comma-separated list. It must match the frontend
 origin **exactly** (scheme + host + port) or the browser blocks every API call.
