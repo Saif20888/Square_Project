@@ -28,7 +28,8 @@ const DEVICE_FIELDS = [
   { field: "assetCategory", label: "Category", patterns: [/categor/i] },
   { field: "warrantyExpiry", label: "Warranty expiry", patterns: [/warranty/i, /expir/i] },
   { field: "department", label: "Department", patterns: [/depart|dept/i] },
-  { field: "owner", label: "Assigned to", patterns: [/owner/i, /assigned/i, /holder/i, /issued\s*to/i, /^user$/i, /employee/i] },
+  { field: "owner", label: "Assigned to", patterns: [/owner/i, /assigned/i, /holder/i, /issued\s*to/i, /^user$/i] },
+  { field: "ownerEmployeeId", label: "Employee ID", patterns: [/emp(loyee)?\.?\s*id/i] },
   { field: "ipAddress", label: "IP address", patterns: [/\bip\b/i] },
   { field: "specifications", label: "Specifications", patterns: [/spec/i, /config/i, /description/i, /details/i] },
 ];
@@ -41,7 +42,6 @@ const EMPLOYEE_FIELDS = [
   { field: "unit", label: "Unit (HR and Admin)", patterns: [/unit/i, /sub.?depart/i] },
   { field: "mobile", label: "Mobile", patterns: [/mobile/i, /cell/i] },
   { field: "phone", label: "Emergency contact", patterns: [/phone/i, /emergency/i, /contact/i] },
-  { field: "dob", label: "Date of birth", patterns: [/birth/i, /\bdob\b/i] },
   { field: "location", label: "Office", patterns: [/location/i, /office/i, /branch/i] },
   { field: "floor", label: "Floor", patterns: [/floor/i] },
 ];
@@ -136,6 +136,7 @@ export function ImportPanel({ ds, notify, user }) {
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
   const [fileName, setFileName] = useState("");
+  const [importMode, setImportMode] = useState("both"); // both | employees | devices
   const [batches, setBatches] = useState(null);
   const [issues, setIssues] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -215,10 +216,18 @@ export function ImportPanel({ ds, notify, user }) {
             rec.assetCategory = normCategory(rec.assetCategory) || (rec.assetNumber ? "Asset" : null);
             rec.originalValue = rec.originalValue != null ? parseFloat(String(rec.originalValue).replace(/[$,৳\s]/g, "")) || 0 : 0;
             rec.warrantyExpiry = toIsoDate(rec.warrantyExpiry);
+            // Employee ID is the reliable link (exact match); "Assigned To" (name/
+            // e-mail/username) is the fallback for sheets that don't have it yet.
+            rec.ownerEmployeeId = String(rec.ownerEmployeeId || "").trim();
             const ownerKey = String(rec.owner || "").trim();
-            rec.ownerUser = ownerKey ? ds.users.find((u) => !u.offboarded && (
-              norm(u.name) === norm(ownerKey) || (u.email || "").toLowerCase() === ownerKey.toLowerCase()
-              || (u.employeeId || "").toLowerCase() === ownerKey.toLowerCase() || u.username.toLowerCase() === ownerKey.toLowerCase())) : null;
+            rec.ownerUser = rec.ownerEmployeeId
+              ? ds.users.find((u) => !u.offboarded && (u.employeeId || "").toLowerCase() === rec.ownerEmployeeId.toLowerCase()) || null
+              : null;
+            if (!rec.ownerUser && ownerKey) {
+              rec.ownerUser = ds.users.find((u) => !u.offboarded && (
+                norm(u.name) === norm(ownerKey) || (u.email || "").toLowerCase() === ownerKey.toLowerCase()
+                || (u.employeeId || "").toLowerCase() === ownerKey.toLowerCase() || u.username.toLowerCase() === ownerKey.toLowerCase())) || null;
+            }
             rec.department = rec.department ? bestMatch(rec.department, deptNames) : null;
           } else {
             rec.name = String(rec.name || "").trim();
@@ -229,7 +238,6 @@ export function ImportPanel({ ds, notify, user }) {
             rec.rawDepartment = String(rec.department || "").trim();
             rec.department = bestMatch(rec.rawDepartment, deptNames);
             rec.unit = rec.unit ? bestMatch(rec.unit, HR_ADMIN_UNITS) : null;
-            rec.dob = toIsoDate(rec.dob);
             rec.location = rec.location ? bestMatch(rec.location, ds.locations.map((l) => l.name)) : null;
             rec.floor = rec.floor != null && String(rec.floor).trim() !== "" ? parseInt(rec.floor, 10) || null : null;
             rec.mobile = String(rec.mobile || "").trim();
@@ -242,16 +250,27 @@ export function ImportPanel({ ds, notify, user }) {
 
       if (!found.length) { notify("Couldn't recognize any importable sheet — download the template to see the expected format.", "crit"); setBusy(false); return; }
 
-      const probs = collectIssues(found);
-      setBatches(found);
+      const wantEntity = importMode === "employees" ? "employees" : importMode === "devices" ? "devices" : null;
+      const kept = wantEntity ? found.filter((b) => b.entity === wantEntity) : found;
+      const ignored = wantEntity ? found.filter((b) => b.entity !== wantEntity) : [];
+      if (!kept.length) {
+        notify(`No ${wantEntity} sheet found — the file only had ${ignored.map((b) => b.entity).join(", ") || "unrecognized sheets"}. Switch the import mode or check the file.`, "crit");
+        setBusy(false);
+        return;
+      }
+
+      const probs = collectIssues(kept);
+      setBatches(kept);
       setIssues(probs);
       setBusy(false);
       if (probs.length === 0) {
-        await runImport(found, [], file.name, false);
+        await runImport(kept, [], file.name, false);
+        if (ignored.length) say("ai", `Heads up — I ignored ${ignored.map((b) => `sheet "${b.sheetName}"`).join(", ")} since you chose a ${wantEntity}-only import.`);
       } else {
         const first = probs[0];
-        const totalRows = found.reduce((s, b) => s + b.rows.length, 0);
-        say("ai", `Hey! I scanned "${file.name}" — ${totalRows} row${totalRows === 1 ? "" : "s"} across ${found.length} sheet${found.length === 1 ? "" : "s"} — and I found ${probs.length} issue${probs.length === 1 ? "" : "s"} to sort out before I can deploy everyone.`);
+        const totalRows = kept.reduce((s, b) => s + b.rows.length, 0);
+        if (ignored.length) say("ai", `Note: I'm ignoring ${ignored.map((b) => `sheet "${b.sheetName}"`).join(", ")} since you chose a ${wantEntity}-only import.`);
+        say("ai", `Hey! I scanned "${file.name}" — ${totalRows} row${totalRows === 1 ? "" : "s"} across ${kept.length} sheet${kept.length === 1 ? "" : "s"} — and I found ${probs.length} issue${probs.length === 1 ? "" : "s"} to sort out before I can deploy everyone.`);
         say("ai", `For example: ${first.message}`);
         say("ai", `You can answer me right here — try things like "put ${first.who || "them"} in the Marketing department", "make row ${first.rowNum} an Officer", "skip row ${first.rowNum}", or fix them with the controls below. Once everything's resolved, say "import" and I'll place everyone.`);
         scrollChat();
@@ -302,8 +321,10 @@ export function ImportPanel({ ds, notify, user }) {
             add("serialNumber", `Row ${rec.__row}: a device with serial ${rec.serialNumber} already exists. Give me a different serial, or skip the row.`, "text", null, rec.serialNumber);
           } else seenSerials.add(rec.serialNumber);
           if (!rec.deviceName) add("deviceName", `Row ${rec.__row}: no device name/model. Type it in, or skip the row.`, "text");
-          if (rec.owner && String(rec.owner).trim() && !rec.ownerUser) {
-            add("owner", `Row ${rec.__row} (${rec.serialNumber || rec.deviceName}): I couldn't find an employee called "${String(rec.owner).trim()}". Who should get this device?`, "select", ["— keep in inventory —", ...employeeNames], bestMatch(rec.owner, employeeNames) || "— keep in inventory —");
+          const ownerGiven = rec.ownerEmployeeId || (rec.owner && String(rec.owner).trim());
+          if (ownerGiven && !rec.ownerUser) {
+            const who = rec.ownerEmployeeId ? `with Employee ID "${rec.ownerEmployeeId}"` : `called "${String(rec.owner).trim()}"`;
+            add("owner", `Row ${rec.__row} (${rec.serialNumber || rec.deviceName}): I couldn't find an employee ${who}. Who should get this device?`, "select", ["— keep in inventory —", ...employeeNames], bestMatch(rec.owner, employeeNames) || "— keep in inventory —");
           }
         }
       });
@@ -498,7 +519,7 @@ export function ImportPanel({ ds, notify, user }) {
             name: rec.name, email: rec.email, employeeId: rec.employeeId || null,
             designation: rec.designation, department: rec.department || deptNames[0],
             unit: rec.department === HR_ADMIN_DEPT ? rec.unit || "HR" : null,
-            mobile: rec.mobile, phone: rec.phone, dob: rec.dob,
+            mobile: rec.mobile, phone: rec.phone,
             location: rec.location, floor: rec.floor, managerUsername: user?.username || null,
           });
           if (r.ok) { ok.push({ key: rec.email, text: `${rec.name} → ${rec.department || deptNames[0]}${rec.unit ? ` (${rec.unit} unit)` : ""} as ${rec.designation || "—"}` }); creds.push({ user: rec.email, pass: r.tempPassword }); }
@@ -563,6 +584,14 @@ export function ImportPanel({ ds, notify, user }) {
           checks out, the data is <strong>deployed instantly</strong> into the right departments.
           If anything is unclear, the assistant opens a chat and you fix it in plain language — no re-upload.
         </p>
+        <div className="sq-comp" style={{ marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <span className="sq-eyebrow">Import</span>
+          <div className="sq-segment">
+            <button className={importMode === "both" ? "is-on" : ""} onClick={() => setImportMode("both")} disabled={busy}>Employees & devices</button>
+            <button className={importMode === "employees" ? "is-on" : ""} onClick={() => setImportMode("employees")} disabled={busy}>Employees only</button>
+            <button className={importMode === "devices" ? "is-on" : ""} onClick={() => setImportMode("devices")} disabled={busy}>Devices only</button>
+          </div>
+        </div>
         <div className="sq-warranty-actions" style={{ flexWrap: "wrap" }}>
           <Btn variant="primary" icon={Upload} onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy && !progress ? "Scanning…" : "Upload Excel / CSV"}
