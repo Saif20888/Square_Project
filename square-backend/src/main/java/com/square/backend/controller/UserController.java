@@ -114,6 +114,7 @@ public class UserController {
         u.setEmail(email);
         u.setMobile(str(body.get("mobile")));
         u.setPhone(str(body.get("phone")));
+        u.setOfficialNumber(str(body.get("officialNumber")));
         u.setDob(parseDate(body.get("dob")));
         u.setLocation(str(body.get("location")));
         u.setFloor(parseInt(body.get("floor")));
@@ -176,6 +177,7 @@ public class UserController {
             if (body.containsKey("dob")) u.setDob(parseDate(body.get("dob")));
             if (body.containsKey("mobile")) u.setMobile(str(body.get("mobile")));
             if (body.containsKey("phone")) u.setPhone(str(body.get("phone")));
+            if (body.containsKey("officialNumber")) u.setOfficialNumber(str(body.get("officialNumber")));
             if (body.containsKey("location")) {
                 requireKnownLocation(str(body.get("location")));
                 u.setLocation(str(body.get("location")));
@@ -273,6 +275,7 @@ public class UserController {
             m.put("email", u.getEmail());
             m.put("phone", u.getPhone());
             m.put("mobile", u.getMobile());
+            m.put("officialNumber", u.getOfficialNumber());
             m.put("dob", u.getDob());
         }
         return m;

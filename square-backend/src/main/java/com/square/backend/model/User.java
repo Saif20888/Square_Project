@@ -37,6 +37,8 @@ public class User {
     // Contact info shown on the Superuser's roster
     private String email;
     private String phone;
+    // Company-issued phone number, distinct from the employee's personal mobile
+    private String officialNumber;
 
     // Onboarding details captured by the Superuser's 2-step form
     private LocalDate dob;
@@ -86,6 +88,8 @@ public class User {
     public void setEmail(String email) { this.email = email; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public String getOfficialNumber() { return officialNumber; }
+    public void setOfficialNumber(String officialNumber) { this.officialNumber = officialNumber; }
     public LocalDate getJoinedAt() { return joinedAt; }
     public void setJoinedAt(LocalDate joinedAt) { this.joinedAt = joinedAt; }
     public LocalDate getDob() { return dob; }
