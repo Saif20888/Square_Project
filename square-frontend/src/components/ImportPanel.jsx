@@ -41,7 +41,8 @@ const EMPLOYEE_FIELDS = [
   { field: "department", label: "Department", patterns: [/depart|dept/i] },
   { field: "unit", label: "Unit (HR and Admin)", patterns: [/unit/i, /sub.?depart/i] },
   { field: "mobile", label: "Mobile", patterns: [/mobile/i, /cell/i] },
-  { field: "phone", label: "Emergency contact", patterns: [/phone/i, /emergency/i, /contact/i] },
+  { field: "phone", label: "Emergency contact", patterns: [/emergency/i] },
+  { field: "officialNumber", label: "Official number", patterns: [/official/i, /work\s*(number|phone)/i, /office\s*(number|phone)/i] },
   { field: "location", label: "Office", patterns: [/location/i, /office/i, /branch/i] },
   { field: "floor", label: "Floor", patterns: [/floor/i] },
 ];
@@ -242,6 +243,7 @@ export function ImportPanel({ ds, notify, user }) {
             rec.floor = rec.floor != null && String(rec.floor).trim() !== "" ? parseInt(rec.floor, 10) || null : null;
             rec.mobile = String(rec.mobile || "").trim();
             rec.phone = String(rec.phone || "").trim();
+            rec.officialNumber = String(rec.officialNumber || "").trim();
           }
           return rec;
         });
@@ -519,7 +521,7 @@ export function ImportPanel({ ds, notify, user }) {
             name: rec.name, email: rec.email, employeeId: rec.employeeId || null,
             designation: rec.designation, department: rec.department || deptNames[0],
             unit: rec.department === HR_ADMIN_DEPT ? rec.unit || "HR" : null,
-            mobile: rec.mobile, phone: rec.phone,
+            mobile: rec.mobile, phone: rec.phone, officialNumber: rec.officialNumber || null,
             location: rec.location, floor: rec.floor, managerUsername: user?.username || null,
           });
           if (r.ok) { ok.push({ key: rec.email, text: `${rec.name} → ${rec.department || deptNames[0]}${rec.unit ? ` (${rec.unit} unit)` : ""} as ${rec.designation || "—"}` }); creds.push({ user: rec.email, pass: r.tempPassword }); }

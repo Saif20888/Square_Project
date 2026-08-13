@@ -48,7 +48,7 @@ export function TopBar({ user, profile, mode, onSignOut, onHome, crumb }) {
                   </div>
                 </div>
                 <div className="sq-profile-rows">
-                  <div className="sq-profile-row"><span className="sq-eyebrow">Unique ID</span><span className="sq-mono">{p.employeeId || "—"}</span></div>
+                  <div className="sq-profile-row"><span className="sq-eyebrow">Employee ID</span><span className="sq-mono">{p.employeeId || "—"}</span></div>
                   <div className="sq-profile-row"><span className="sq-eyebrow">Designation</span><span>{p.jobTitle || "—"}</span></div>
                   <div className="sq-profile-row"><span className="sq-eyebrow">Department</span><span>{p.department || "—"}</span></div>
                   <div className="sq-profile-row"><span className="sq-eyebrow">E-Mail</span><span>{p.email || p.username}</span></div>

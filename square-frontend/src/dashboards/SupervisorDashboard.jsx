@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { Home, Users, Layers, Trash2, ChevronRight, FileText, Search, Radio, Mail, Phone, Clock, PackagePlus, Check, X, AlertTriangle, Building2, Undo2, UserPlus, UserRound, LogOut, Eye, Settings, UserCog, Crown, HardDrive, Upload, KeyRound, Copy } from "lucide-react";
+import { Home, Users, Layers, Trash2, ChevronRight, FileText, Search, Radio, Mail, Phone, Briefcase, Clock, PackagePlus, Check, X, AlertTriangle, Building2, Undo2, UserPlus, UserRound, LogOut, Eye, Settings, UserCog, Crown, HardDrive, Upload, KeyRound, Copy, BarChart3 } from "lucide-react";
 import { money, DESIGNATIONS, TOP_DESIGNATIONS, UNIQUE_DESIGNATIONS, COMMON_DESIGNATIONS, ROLE_LABEL, PENDING_ALERT_DAYS, floorsFor } from "../data/constants";
-import { oversightMatrix, warrantyLedger, scrapRegistry, pendingAssignments, yearsOfService, departmentAssets, agingTickets } from "../data/derived";
+import { oversightMatrix, warrantyLedger, scrapRegistry, pendingAssignments, yearsOfService, departmentAssets, agingTickets, technicianLedger } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
-import { Badge, Empty, StatusBadge, Btn, Modal } from "../components/primitives";
+import { Badge, Empty, StatusBadge, Btn, Modal, Bar, Donut, DonutLegend } from "../components/primitives";
 import { AccountPanel, SignOutModal } from "../components/Account";
 import { OnboardingForm } from "../components/Onboarding";
 import { OrgPanel } from "../components/OrgPanel";
@@ -59,6 +59,8 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
   }, [view, ds.refresh]);
 
   const oversightAll = useMemo(() => oversightMatrix(ds.tickets, ds.users), [ds.tickets, ds.users]);
+  const techLedger = useMemo(() => technicianLedger(ds.tickets, ds.users), [ds.tickets, ds.users]);
+  const techLedgerMax = useMemo(() => techLedger.reduce((m, r) => Math.max(m, r.assigned), 0), [techLedger]);
   const ovQ = ovSearch.trim().toLowerCase();
   const oversight = oversightAll.filter((t) => {
     if (ovStatus !== "ALL" && t.status !== ovStatus) return false;
@@ -104,6 +106,10 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
     .filter((g) => (filtersActive ? g.people.length > 0 : true));
   const availableDevices = ds.assets.filter((a) => a.status === "AVAILABLE_IN_POOL");
   const warrantyAll = useMemo(() => warrantyLedger(ds.assets), [ds.assets]);
+  const warrantySplit = useMemo(() => {
+    const active = warrantyAll.filter((a) => a.warrantyDaysRemaining > 0).length;
+    return { active, expired: warrantyAll.length - active };
+  }, [warrantyAll]);
   const warranty = warrantyAll.filter((a) => {
     if (wf === "ACTIVE" && !(a.warrantyDaysRemaining > 0)) return false;
     if (wf === "EXPIRED" && !(a.warrantyDaysRemaining <= 0)) return false;
@@ -322,14 +328,25 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
                 </div>
               </div>
             )}
+            {techLedger.length > 0 && (
+              <div className="sq-card" style={{ marginBottom: 16 }}>
+                <div className="sq-pool-head"><BarChart3 size={16} /> IT Team productivity</div>
+                {techLedger.slice(0, 6).map((row) => (
+                  <Bar key={row.username} label={row.name} value={row.solved} max={techLedgerMax || 1}
+                    sub={`${row.solved} solved · ${row.active} active / ${row.assigned} total`}
+                    tone={row.active > 0 ? "brand" : "ok"} />
+                ))}
+              </div>
+            )}
             <div className="sq-card sq-table-card">
               {oversight.length === 0 ? <Empty icon={Eye} title="No tickets yet" /> : (
                 <table className="sq-table">
-                  <thead><tr><th>Ticket</th><th>Employee</th><th>Problem</th><th>IT Team member</th><th>Status</th></tr></thead>
+                  <thead><tr><th>Ticket</th><th>Submitted</th><th>Employee</th><th>Problem</th><th>IT Team member</th><th>Status</th></tr></thead>
                   <tbody>
                     {oversight.map((t) => (
                       <tr key={t.id}>
                         <td className="sq-mono sq-dim">TKT-{String(t.id).padStart(6, "0")}</td>
+                        <td className="sq-mono sq-dim">{new Date(t.createdAt).toLocaleString()}</td>
                         <td className="sq-cell-strong">{t.raiserName}</td>
                         <td>{t.problemType}</td>
                         <td>{t.acceptedBy || <span className="sq-dim">Unassigned</span>}</td>
@@ -344,7 +361,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
         )}
 
         {view === "employees" && (
-          <Section eyebrow="Everyone in the company · unique ID, department and custody" title="All Employees"
+          <Section eyebrow="Everyone in the company · Employee ID, department and custody" title="All Employees"
             action={
               <div className="sq-warranty-actions">
                 <div className="sq-search sq-search-sm">
@@ -442,6 +459,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
                             <div className="sq-cell-desc" style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 10 }}>
                               {person.email && <span className="sq-comp"><Mail size={12} />{person.email}</span>}
                               {person.phone && <span className="sq-comp"><Phone size={12} /><span className="sq-mono">{person.phone}</span></span>}
+                              {person.officialNumber && <span className="sq-comp"><Briefcase size={12} /><span className="sq-mono">{person.officialNumber}</span></span>}
                               {person.joinedAt && <span className="sq-comp"><Clock size={12} />Since {new Date(person.joinedAt).toLocaleDateString(undefined, { year: "numeric", month: "short" })}</span>}
                             </div>
                             {person.assets.length === 0 ? (
@@ -591,6 +609,21 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
                 </div>
               </div>
             }>
+            {warrantyAll.length > 0 && (
+              <div className="sq-card" style={{ marginBottom: 16 }}>
+                <div className="sq-pool-head"><Layers size={16} /> Warranty coverage</div>
+                <div className="sq-donut-row">
+                  <Donut data={[
+                    { label: "Under warranty", value: warrantySplit.active, tone: "ok" },
+                    { label: "Expired", value: warrantySplit.expired, tone: "crit" },
+                  ]} centerValue={warrantyAll.length} centerLabel="devices" />
+                  <DonutLegend data={[
+                    { label: "Under warranty", value: warrantySplit.active, tone: "ok" },
+                    { label: "Expired", value: warrantySplit.expired, tone: "crit" },
+                  ]} />
+                </div>
+              </div>
+            )}
             <div className="sq-card sq-table-card">
               {warranty.length === 0 ? <Empty icon={Layers} title="No matching assets" /> : (
                 <table className="sq-table">

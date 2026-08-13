@@ -340,10 +340,44 @@ export const REPAIR_SHOP_TRUSTED = "Trusted repair shop";
 export const money = (n) => "$" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 export const KB_ARTICLES = [
-  { id: 1, category: "Networking", title: "Connect to SQUARE corporate Wi-Fi", body: "Open network settings, select 'SQUARE-Corp', and sign in with your SQUARE username and password (not your email). If it won't connect, forget the network and rejoin." },
-  { id: 2, category: "Printing", title: "Printer driver installation guide", body: "Download the driver for your floor's printer model from the IT portal, run the installer as administrator, and restart the print spooler service if the queue looks stuck." },
-  { id: 3, category: "Networking", title: "Set up the company VPN", body: "Install the VPN client from the IT portal, use your SQUARE username, and pick the 'HQ' gateway unless your team was told otherwise." },
-  { id: 4, category: "Account", title: "Reset your SQUARE account password", body: "Use the self-service reset link on the login page. Resets take effect immediately, but you may need to sign out and back in on other devices." },
-  { id: 5, category: "Hardware", title: "Laptop won't wake from sleep", body: "Hold the power button for 10 seconds to force a restart. If it keeps happening, file a ticket — repeated freezes can indicate a failing battery or RAM." },
-  { id: 6, category: "Hardware", title: "Battery draining unusually fast", body: "Check Settings → Battery for a runaway process. If usage looks normal but the battery still drains fast or feels warm/swollen, file a ticket immediately — don't keep using it." },
+  // --- Networking ---
+  { id: 1, category: "Networking", title: "Connect to SQUARE corporate Wi-Fi", body: "Open network settings, select 'SQUARE-Corp', and sign in with your SQUARE username and password (not your email). If it won't connect, forget the network and rejoin — a stale saved password is the most common cause." },
+  { id: 2, category: "Networking", title: "Set up the company VPN", body: "Install the VPN client from the IT portal, use your SQUARE username, and pick the 'HQ' gateway unless your team was told otherwise. Connect before opening internal tools like the file server or intranet — they won't resolve without it." },
+  { id: 3, category: "Networking", title: "Wi-Fi connects but there's no internet", body: "Toggle Wi-Fi off and on, or forget and rejoin 'SQUARE-Corp'. If it persists on your device only, try a different floor's access point — a single overloaded AP is a common cause. If every device in the area is affected, file a ticket as a Network/Wi-Fi Outage." },
+  { id: 4, category: "Networking", title: "Working from a different SQUARE office", body: "Your login works at every office — connect to that location's 'SQUARE-Corp' network as usual. If you need a specific printer or shared drive that's local to that office, ask the on-site IT Team member to add it for the day." },
+
+  // --- Printing ---
+  { id: 5, category: "Printing", title: "Printer driver installation guide", body: "Download the driver for your floor's printer model from the IT portal, run the installer as administrator, and restart the print spooler service if the queue looks stuck." },
+  { id: 6, category: "Printing", title: "Print jobs stuck in the queue", body: "Open the printer's queue, cancel the stuck job, and try again — a job with a broken file reference will block everything behind it. If the queue won't clear, restart the print spooler service; if that doesn't help, file a Printer Error ticket with the printer's location." },
+
+  // --- Account ---
+  { id: 7, category: "Account", title: "Reset your SQUARE account password", body: "Use the self-service reset link on the login page. Resets take effect immediately, but you may need to sign out and back in on other devices." },
+  { id: 8, category: "Account", title: "Change your password from My Account", body: "Go to My Account and use the Change Password form — you'll need your current password plus a new one at least 8 characters long. This immediately signs out every other active session, including on other devices, for your security." },
+  { id: 9, category: "Account", title: "Forgot your username", body: "Your username is the e-mail address IT set up for you at onboarding — the same one your account credentials were shared in. If you genuinely can't locate it, use \"Forgot password\" on the login screen instead; your Superuser can look you up and issue a temporary password once they confirm it's you." },
+
+  // --- Hardware ---
+  { id: 10, category: "Hardware", title: "Laptop won't wake from sleep", body: "Hold the power button for 10 seconds to force a restart. If it keeps happening, file a ticket — repeated freezes can indicate a failing battery or RAM." },
+  { id: 11, category: "Hardware", title: "Battery draining unusually fast", body: "Check Settings → Battery for a runaway process. If usage looks normal but the battery still drains fast or feels warm/swollen, file a ticket immediately — don't keep using it." },
+  { id: 12, category: "Hardware", title: "Screen flickering or unusually dim", body: "Flickering right after waking from sleep is usually the display driver reinitializing and settles in a few seconds. If it's constant, try a different brightness level and check the cable on an external monitor. Persistent flicker or dimness that won't respond to the brightness key is a hardware ticket, not a settings issue." },
+  { id: 13, category: "Hardware", title: "Mouse or keyboard not responding", body: "For wireless devices, check the battery and the USB receiver's connection first — a loose receiver is the most common cause. For a wired device, try a different USB port. If a fresh restart and swapping ports doesn't fix it, file a Hardware Malfunction ticket so IT can issue a replacement." },
+
+  // --- Software ---
+  { id: 14, category: "Software", title: "An application keeps crashing", body: "Restart the app, and if that doesn't hold, restart the laptop — a lot of crash loops trace back to a stuck background process. If it keeps happening after that, file a Software Crash ticket with what you were doing right before it crashed; that detail is what usually gets it fixed fastest." },
+  { id: 15, category: "Software", title: "Installing approved software", body: "Standard business software (browsers, PDF tools, communication apps) can be requested through IT — file a ticket describing what you need and why. Company laptops are locked down against unapproved installers, so downloading and running one yourself won't work and may trigger a security review." },
+  { id: 16, category: "Software", title: "OS update stuck or failing", body: "Leave it running for at least 30 minutes — large updates can look frozen at certain stages while they're actually working. If it's genuinely stuck past that, a hard restart is safe on Windows/macOS update screens specifically (unlike mid-update elsewhere). Still failing after a retry — file a Software Crash ticket." },
+
+  // --- Security ---
+  { id: 17, category: "Security", title: "Spotted a phishing e-mail", body: "Don't click any links or open attachments. Note the sender and subject, then file a ticket (category: Other) so IT can check whether it was sent to anyone else and block the sender if needed. When in doubt about a real-looking request for credentials or payment, verify by phone before acting on it." },
+  { id: 18, category: "Security", title: "Lock your screen when you step away", body: "Windows: Win+L. Mac: Ctrl+Cmd+Q. An unlocked, unattended laptop is the easiest way for company data to walk out the door — make it a habit even for a two-minute coffee run." },
+  { id: 19, category: "Security", title: "Lost or stolen device", body: "Report it to IT immediately — file a ticket if you still have access to another device, or contact your Superuser directly otherwise. The account's password should be reset right away so the device can't be used to sign in; the sooner it's reported, the sooner that happens." },
+
+  // --- E-mail ---
+  { id: 20, category: "E-mail", title: "Mail client not syncing new messages", body: "Check you're connected to the internet (Wi-Fi or VPN if working remotely), then close and reopen the mail app. If it's been more than an hour with nothing syncing, file a Software Crash ticket — persistent sync failures usually need IT to re-authenticate the account." },
+  { id: 21, category: "E-mail", title: "Mailbox full or can't send mail", body: "Clear out large attachments from old e-mails, especially in Sent and Trash, since both count against your quota. If you're still blocked after cleaning up, file a ticket — IT can raise your storage limit." },
+
+  // --- Meeting rooms & peripherals ---
+  { id: 22, category: "Peripherals", title: "Connecting to a conference room display", body: "Use the HDMI cable at the table, or the room's wireless-cast app if it has one — most SQUARE meeting rooms support both. If the display shows \"No signal,\" check the input source on the screen itself before assuming the cable is faulty." },
+  { id: 23, category: "Peripherals", title: "Setting up a second monitor", body: "Connect the cable, then Windows: Win+P (or macOS: System Settings → Displays) to choose Extend or Duplicate. If the laptop doesn't detect it at all, try a different cable or port first — that's a more common cause than a faulty monitor." },
 ];
+
+export const KB_CATEGORIES = [...new Set(KB_ARTICLES.map((a) => a.category))];

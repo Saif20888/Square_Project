@@ -172,3 +172,56 @@ export function Bar({ label, value, max, sub, tone = "brand" }) {
     </div>
   );
 }
+
+const DONUT_TONE_HEX = { brand: "#34A853", ok: "#34A853", warn: "#E8A013", crit: "#E8112D", info: "#1A8FD1", neutral: "#94A3B8" };
+
+// Pure-SVG donut chart — no charting library. `data` is [{ label, value, tone }].
+export function Donut({ data, size = 132, thickness = 15, centerLabel, centerValue }) {
+  const segments = (data || []).filter((d) => d.value > 0);
+  const total = segments.reduce((s, d) => s + d.value, 0);
+  const r = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <div className="sq-donut-wrap" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="sq-donut">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--s3h)" strokeWidth={thickness} />
+        {total > 0 && segments.map((d, i) => {
+          const dash = (d.value / total) * circumference;
+          const el = (
+            <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
+              stroke={DONUT_TONE_HEX[d.tone] || DONUT_TONE_HEX.neutral} strokeWidth={thickness}
+              strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+          );
+          offset += dash;
+          return el;
+        })}
+      </svg>
+      {(centerLabel || centerValue != null) && (
+        <div className="sq-donut-center">
+          {centerValue != null && <div className="sq-donut-value">{centerValue}</div>}
+          {centerLabel && <div className="sq-donut-label">{centerLabel}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Legend rows to pair with a Donut — same `data` shape, shows share as a percentage.
+export function DonutLegend({ data }) {
+  const rows = (data || []).filter((d) => d.value > 0);
+  const total = rows.reduce((s, d) => s + d.value, 0);
+  if (!rows.length) return <div className="sq-cell-desc">No data yet.</div>;
+  return (
+    <div className="sq-donut-legend">
+      {rows.map((d, i) => (
+        <div key={i} className="sq-donut-legend-row">
+          <span className={`sq-donut-dot ${d.tone || "neutral"}`} />
+          <span className="sq-donut-legend-label">{d.label}</span>
+          <span className="sq-mono sq-dim">{d.value} · {total ? Math.round((d.value / total) * 100) : 0}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}

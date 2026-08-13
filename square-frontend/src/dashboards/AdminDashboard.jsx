@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { Home, DollarSign, BarChart3, Server, FileText, Layers, Users, Activity, ShieldAlert, Radio, Clock, Zap, CheckCircle2, UserRound, LogOut } from "lucide-react";
+import { Home, DollarSign, BarChart3, Server, FileText, Layers, Users, Activity, ShieldAlert, Radio, Clock, Zap, CheckCircle2, UserRound, LogOut, Search } from "lucide-react";
 import { API_BASE, money } from "../data/constants";
 import { authFetch, REQUEST_TIMEOUT_MS } from "../data/useDataSource";
-import { assetValuation, activityFeed, FEED_ICON, FEED_TONE } from "../data/derived";
+import { assetValuation, assetValuationByDepartment, activityFeed, FEED_ICON, FEED_TONE } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
-import { Stat, Empty, Bar, StatusBadge } from "../components/primitives";
+import { Stat, Empty, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
 import { AccountPanel, SignOutModal } from "../components/Account";
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const PROBLEM_TONE = { "Hardware Malfunction": "crit", "Network/Wi-Fi Outage": "warn", "Software Crash": "info", "Printer Error": "neutral", "Other": "brand" };
+const actionLabel = (a) => (a || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 /* ----------------------------------- Admin --------------------------------------- */
 export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }) {
@@ -21,16 +25,43 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
     const solving = t.filter((x) => x.status === "SOLVING").length;
     const resolved = t.filter((x) => x.status === "CLOSED").length;
     const byProblem = {};
-    t.forEach((x) => { byProblem[x.problemType] = (byProblem[x.problemType] || 0) + 1; });
-    const problems = Object.entries(byProblem).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+    const byProblemResolved = {};
+    t.forEach((x) => {
+      byProblem[x.problemType] = (byProblem[x.problemType] || 0) + 1;
+      if (x.status === "CLOSED") byProblemResolved[x.problemType] = (byProblemResolved[x.problemType] || 0) + 1;
+    });
+    const problems = Object.entries(byProblem)
+      .map(([k, v]) => ({ k, v, resolved: byProblemResolved[k] || 0, rate: v ? Math.round(((byProblemResolved[k] || 0) / v) * 100) : 0 }))
+      .sort((a, b) => b.v - a.v);
     const problemMax = problems.reduce((m, c) => Math.max(m, c.v), 0);
     const resolveRate = t.length ? Math.round((resolved / t.length) * 100) : 0;
     return { open, solving, resolved, problems, problemMax, resolveRate, count: t.length };
   }, [t]);
 
   const expiredAssets = useMemo(() => ds.assets.filter((a) => a.status !== "SCRAPPED" && a.warrantyDaysRemaining <= 0).length, [ds.assets]);
-  const valuation = useMemo(() => assetValuation(ds.assets), [ds.assets]);
+  const [valueGroupBy, setValueGroupBy] = useState("type"); // type | department
+  const valuation = useMemo(
+    () => (valueGroupBy === "department" ? assetValuationByDepartment(ds.users, ds.assets) : assetValuation(ds.assets)),
+    [valueGroupBy, ds.users, ds.assets]);
   const feed = useMemo(() => activityFeed(ds.tickets, ds.assets), [ds.tickets, ds.assets]);
+
+  // Audit log — real privileged-action events, filterable by year/month/action/search
+  const [auditYear, setAuditYear] = useState("ALL");
+  const [auditMonth, setAuditMonth] = useState("ALL");
+  const [auditAction, setAuditAction] = useState("ALL");
+  const [auditSearch, setAuditSearch] = useState("");
+  const auditYears = useMemo(() => Array.from(new Set(ds.auditEvents.map((e) => new Date(e.at).getFullYear()))).sort((a, b) => b - a), [ds.auditEvents]);
+  const auditActions = useMemo(() => Array.from(new Set(ds.auditEvents.map((e) => e.action))).sort(), [ds.auditEvents]);
+  const auditFiltered = useMemo(() => ds.auditEvents.filter((e) => {
+    const d = new Date(e.at);
+    if (auditYear !== "ALL" && d.getFullYear() !== Number(auditYear)) return false;
+    if (auditMonth !== "ALL" && d.getMonth() + 1 !== Number(auditMonth)) return false;
+    if (auditAction !== "ALL" && e.action !== auditAction) return false;
+    const q = auditSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (e.actorUsername || "").toLowerCase().includes(q) || (e.action || "").toLowerCase().includes(q)
+      || (e.target || "").toLowerCase().includes(q) || (e.detail || "").toLowerCase().includes(q);
+  }), [ds.auditEvents, auditYear, auditMonth, auditAction, auditSearch]);
 
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(false);
@@ -106,9 +137,25 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
         )}
 
         {view === "valuation" && (
-          <Section eyebrow="Straight-line depreciation" title="Asset valuation">
+          <Section eyebrow="Straight-line depreciation" title="Asset valuation"
+            action={
+              <div className="sq-segment">
+                <button className={valueGroupBy === "type" ? "is-on" : ""} onClick={() => setValueGroupBy("type")}>By device type</button>
+                <button className={valueGroupBy === "department" ? "is-on" : ""} onClick={() => setValueGroupBy("department")}>By department</button>
+              </div>
+            }>
+            {valuation.byType.length > 0 && (
+              <div className="sq-card" style={{ marginBottom: 16 }}>
+                <div className="sq-pool-head"><DollarSign size={16} /> Book value composition</div>
+                <div className="sq-donut-row">
+                  <Donut data={valuation.byType.map((row, i) => ({ label: row.type, value: row.book, tone: ["brand", "info", "warn", "crit", "neutral"][i % 5] }))}
+                    centerValue={money(valuation.totalBook)} centerLabel="book value" />
+                  <DonutLegend data={valuation.byType.map((row, i) => ({ label: row.type, value: row.book, tone: ["brand", "info", "warn", "crit", "neutral"][i % 5] }))} />
+                </div>
+              </div>
+            )}
             <div className="sq-card">
-              <div className="sq-eyebrow" style={{ marginBottom: 14 }}>Original vs. book value · by device type</div>
+              <div className="sq-eyebrow" style={{ marginBottom: 14 }}>Original vs. book value · by {valueGroupBy === "department" ? "department" : "device type"}</div>
               {valuation.byType.length === 0 ? <Empty icon={DollarSign} title="No assets yet" /> : valuation.byType.map((row) => (
                 <div key={row.type} className="sq-val-row">
                   <Bar label={`${row.type} · original`} value={row.original} max={valuation.byType[0].original} sub={money(row.original)} tone="brand" />
@@ -140,35 +187,67 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
 
         {view === "components" && (
           <Section eyebrow="Where problems cluster" title="Problem breakdown">
+            {metrics.problems.length > 0 && (
+              <div className="sq-card" style={{ marginBottom: 16 }}>
+                <div className="sq-pool-head"><BarChart3 size={16} /> Share of tickets by problem type</div>
+                <div className="sq-donut-row">
+                  <Donut data={metrics.problems.map((c) => ({ label: c.k, value: c.v, tone: PROBLEM_TONE[c.k] || "neutral" }))}
+                    centerValue={metrics.count} centerLabel="tickets" />
+                  <DonutLegend data={metrics.problems.map((c) => ({ label: c.k, value: c.v, tone: PROBLEM_TONE[c.k] || "neutral" }))} />
+                </div>
+              </div>
+            )}
             <div className="sq-card">
               <div className="sq-eyebrow" style={{ marginBottom: 14 }}>By problem type · {metrics.count} tickets</div>
               {metrics.problems.length === 0 ? <Empty icon={BarChart3} title="No data yet" /> :
                 metrics.problems.map((c) => (
                   <Bar key={c.k} label={c.k} value={c.v} max={metrics.problemMax}
-                    sub={`${c.v} · ${Math.round((c.v / metrics.count) * 100)}%`}
-                    tone={c.k === "Hardware Malfunction" ? "crit" : c.k === "Network/Wi-Fi Outage" ? "warn" : "brand"} />
+                    sub={`${c.v} · ${Math.round((c.v / metrics.count) * 100)}% of tickets · ${c.rate}% resolved`}
+                    tone={PROBLEM_TONE[c.k] || "brand"} />
                 ))}
             </div>
           </Section>
         )}
 
         {view === "audit" && (
-          <Section eyebrow="Every record" title="Audit log">
+          <Section eyebrow={`${ds.auditEvents.length} recent record${ds.auditEvents.length === 1 ? "" : "s"}`} title="Audit log"
+            action={
+              <div className="sq-warranty-actions">
+                <div className="sq-search sq-search-sm">
+                  <Search size={14} />
+                  <input className="sq-input sq-search-input" placeholder="Search actor, action, target…" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} />
+                </div>
+                <select className="sq-input" style={{ width: "auto" }} value={auditYear} onChange={(e) => setAuditYear(e.target.value)}>
+                  <option value="ALL">All years</option>
+                  {auditYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select className="sq-input" style={{ width: "auto" }} value={auditMonth} onChange={(e) => setAuditMonth(e.target.value)}>
+                  <option value="ALL">All months</option>
+                  {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                </select>
+                <select className="sq-input" style={{ width: "auto" }} value={auditAction} onChange={(e) => setAuditAction(e.target.value)}>
+                  <option value="ALL">All actions</option>
+                  {auditActions.map((a) => <option key={a} value={a}>{actionLabel(a)}</option>)}
+                </select>
+              </div>
+            }>
             <div className="sq-card sq-table-card">
-              <table className="sq-table">
-                <thead><tr><th>Ticket</th><th>Raised by</th><th>Location</th><th>Problem</th><th>State</th></tr></thead>
-                <tbody>
-                  {t.map((x) => (
-                    <tr key={x.id}>
-                      <td className="sq-mono sq-dim">TKT-{String(x.id).padStart(6, "0")}</td>
-                      <td className="sq-cell-strong">{x.raisedByUsername}</td>
-                      <td className="sq-cell-desc">{x.location} · Floor {x.floor}</td>
-                      <td>{x.problemType}</td>
-                      <td><StatusBadge status={x.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {auditFiltered.length === 0 ? <Empty icon={FileText} title="No matching audit records" /> : (
+                <table className="sq-table">
+                  <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+                  <tbody>
+                    {auditFiltered.map((e) => (
+                      <tr key={e.id}>
+                        <td className="sq-mono sq-dim">{new Date(e.at).toLocaleString()}</td>
+                        <td className="sq-cell-strong">{e.actorUsername}{e.actorRole && <span className="sq-dim"> · {e.actorRole}</span>}</td>
+                        <td><Badge tone="brand" dot={false}>{actionLabel(e.action)}</Badge></td>
+                        <td className="sq-mono sq-dim">{e.target || "—"}</td>
+                        <td className="sq-cell-desc">{e.detail || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </Section>
         )}

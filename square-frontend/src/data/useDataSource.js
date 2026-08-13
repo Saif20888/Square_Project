@@ -48,6 +48,7 @@ export function useDataSource() {
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS);
   const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);
   const [importLogs, setImportLogs] = useState([]);
+  const [auditEvents, setAuditEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   // Set when the server rejects our token (401) — the app must send the user
   // back to the login screen instead of silently dropping to demo data.
@@ -107,6 +108,31 @@ export function useDataSource() {
     ensureStore();
     return demoNotifications.current.filter((n) => n.status === "PENDING");
   };
+  // Demo mode has no persisted audit trail, so one is reconstructed on the fly
+  // from whatever's in the store right now — real actions (tickets, scraps,
+  // onboarding), not a fabricated log. Newest first, capped like the live endpoint.
+  const demoAuditTrail = () => {
+    ensureStore();
+    const events = [];
+    let seq = 1;
+    demoTickets.current.forEach((t) => {
+      const ref = `TKT-${String(t.id).padStart(6, "0")}`;
+      events.push({ id: seq++, actorUsername: t.raisedByUsername, actorRole: "EMPLOYEE", action: "TICKET_CREATED", target: ref, detail: t.problemType, at: t.createdAt });
+      if (t.acceptedBy) {
+        events.push({ id: seq++, actorUsername: t.acceptedBy, actorRole: "IT_TECH", action: t.status === "REJECTED" ? "TICKET_REJECTED" : "TICKET_ACCEPTED", target: ref, detail: t.problemType, at: t.createdAt });
+      }
+      if (t.status === "CLOSED" && t.resolvedAt) {
+        events.push({ id: seq++, actorUsername: t.acceptedBy || "system", actorRole: "IT_TECH", action: "TICKET_RESOLVED", target: ref, detail: t.problemType, at: t.resolvedAt });
+      }
+    });
+    demoAssets.current.forEach((a) => {
+      if (a.scrappedAt) events.push({ id: seq++, actorUsername: "system", actorRole: null, action: "ASSET_SCRAPPED", target: a.serialNumber, detail: a.scrapReason || a.deviceType, at: a.scrappedAt });
+    });
+    demoExtraUsers.current.forEach((u) => {
+      events.push({ id: seq++, actorUsername: u.managerUsername || "system", actorRole: "SUPERVISOR", action: "EMPLOYEE_ONBOARDED", target: u.username, detail: `Onboarded as ${u.jobTitle} in ${u.department}`, at: u.joinedAt });
+    });
+    return events.filter((e) => e.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 200);
+  };
 
   // `silent` skips the loading flag — used after mutations so we don't unmount
   // (and lose the local state of) the dashboard that's still on screen.
@@ -148,6 +174,13 @@ export function useDataSource() {
         const ir = await authFetch(`${API_BASE}/api/import-logs`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ir.ok) setImportLogs(await ir.json());
       } catch { /* history stays as-is */ }
+      try {
+        // Restricted to Supervisor/System admin server-side — other roles get a
+        // 403 here and simply see an empty audit log, same as notifications above.
+        const aer = await authFetch(`${API_BASE}/api/audit?size=200`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
+        if (aer.ok) setAuditEvents(await aer.json());
+        else setAuditEvents([]);
+      } catch { setAuditEvents([]); }
     } catch {
       // In a production build the seed-data fallback is switched off: showing
       // fake data during a real outage would hide the outage from everyone.
@@ -160,6 +193,7 @@ export function useDataSource() {
       setLocations(demoLocations.current.map((l) => ({ ...l })));
       setDepartments(demoDepartments.current.map((d) => ({ ...d })));
       setImportLogs(demoImportLogs.current.map((l) => ({ ...l })));
+      setAuditEvents(demoAuditTrail());
       setMode("demo");
     } finally {
       if (!silent) setLoading(false);
@@ -577,7 +611,8 @@ export function useDataSource() {
         role: unit === "IT" || payload.employeeType === "IT Team" ? "IT_TECH" : "EMPLOYEE",
         name: payload.name, jobTitle: payload.designation, employeeId: payload.employeeId,
         department: payload.department, unit, email: payload.email, mobile: payload.mobile,
-        phone: payload.phone, dob: payload.dob, location: payload.location, floor: payload.floor,
+        phone: payload.phone, officialNumber: payload.officialNumber || null,
+        dob: payload.dob, location: payload.location, floor: payload.floor,
         managerUsername: payload.managerUsername || null, offboarded: false,
         joinedAt: new Date().toISOString().slice(0, 10),
       });
@@ -670,7 +705,7 @@ export function useDataSource() {
   }, [mode]);
 
   return {
-    mode, tickets, assets, users, notifications, locations, departments, importLogs, loading, sessionExpired, refresh, login,
+    mode, tickets, assets, users, notifications, locations, departments, importLogs, auditEvents, loading, sessionExpired, refresh, login,
     addImportLog,
     createTicket, acceptTicket, reject, resolveTicket,
     scrapAsset, assignAsset, issueLoaner, sendToRepair, repairReturn, warrantyReplace,

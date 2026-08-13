@@ -16,7 +16,7 @@ export function OnboardingForm({ ds, user, notify }) {
   const emptyForm = {
     employeeId: "", name: "", dob: "", email: "",
     mobile: "", designation: "", unit: "", department: deptNames[0] || "",
-    location: locNames[0] || "", floor: 1, phone: "", deviceKind: "", deviceName: "",
+    location: locNames[0] || "", floor: 1, phone: "", officialNumber: "", deviceKind: "", deviceName: "",
     ipAddress: "", assetCategory: ASSET_CATEGORIES[1], assetNumber: "", prNumber: "",
     supplierName: "", price: "", warrantyExpiry: dateDaysAgo(-365),
   };
@@ -76,6 +76,7 @@ export function OnboardingForm({ ds, user, notify }) {
       ...form,
       employeeId: form.employeeId.trim(), name: form.name.trim(), email: form.email.trim(),
       mobile: form.mobile.trim(), designation: form.designation, phone: form.phone.trim(),
+      officialNumber: form.officialNumber.trim() || null,
       deviceName: form.deviceName.trim(), ipAddress: form.ipAddress.trim(),
       assetCategory: form.assetCategory,
       assetNumber: form.assetCategory === "Asset" ? form.assetNumber.trim() : null,
@@ -177,15 +178,19 @@ export function OnboardingForm({ ds, user, notify }) {
             <div className="sq-form-row">
               {field("phone", "Emergency contact number",
                 <input className="sq-input" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="e.g. +8801811223344" />)}
+              {field("officialNumber", "Official number (optional)",
+                <input className="sq-input" value={form.officialNumber} onChange={(e) => set("officialNumber", e.target.value)} placeholder="e.g. +8801911223344" />)}
+            </div>
+            <div className="sq-form-row">
               {field("deviceKind", "Device Type",
                 <select className="sq-input" value={form.deviceKind} onChange={(e) => set("deviceKind", e.target.value)}>
                   <option value="">Select a type…</option>
                   {DEVICE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
                 </select>)}
-            </div>
-            <div className="sq-form-row">
               {field("deviceName", "Device Name",
                 <input className="sq-input" value={form.deviceName} onChange={(e) => set("deviceName", e.target.value)} placeholder="e.g. Model X Laptop" />)}
+            </div>
+            <div className="sq-form-row">
               {field("ipAddress", "IP Address (optional)",
                 <input className="sq-input" value={form.ipAddress} onChange={(e) => set("ipAddress", e.target.value)} placeholder="e.g. 10.20.4.117" />)}
             </div>

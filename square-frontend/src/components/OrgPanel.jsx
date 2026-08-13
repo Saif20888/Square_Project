@@ -119,9 +119,14 @@ export function OrgPanel({ ds, notify }) {
             <div className="sq-form-actions"><Btn variant="primary" type="submit" icon={Plus}>Add department</Btn></div>
           </form>
         </div>
+      </div>
 
-        {/* New inventory device — same fields as the employee "Add device" popup */}
-        <div className="sq-card">
+      {/* New inventory device — same fields as the employee "Add device" popup.
+          Centered on its own row rather than stretched into the 2-col grid, since
+          it's a single wide form and left-aligning it under a half-width column
+          looked lopsided. */}
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+        <div className="sq-card" style={{ width: "100%", maxWidth: 560 }}>
           <div className="sq-pool-head"><PackagePlus size={16} /> Add device to IT inventory</div>
           <p className="sq-cell-desc" style={{ marginBottom: 12 }}>New devices land in the IT Team's Inventory tab, ready to be issued with your acceptance.</p>
           <form onSubmit={submitDevice} className="sq-form">
@@ -192,3 +197,4 @@ export function OrgPanel({ ds, notify }) {
     </Section>
   );
 }
+

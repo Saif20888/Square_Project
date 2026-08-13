@@ -49,6 +49,27 @@ export function assetValuation(assets) {
     byType: rows,
   };
 }
+// Same shape as assetValuation, grouped by the owner's department instead of
+// device type — pool/scrapped devices (no owner) land in "Unassigned".
+export function assetValuationByDepartment(users, assets) {
+  const active = assets.filter((a) => a.status !== "SCRAPPED");
+  const byDept = {};
+  active.forEach((a) => {
+    const owner = users.find((u) => u.id === a.userId);
+    const k = owner?.department || a.department || "Unassigned";
+    if (!byDept[k]) byDept[k] = { type: k, count: 0, original: 0, book: 0 };
+    byDept[k].count += 1;
+    byDept[k].original += a.originalValue || 0;
+    byDept[k].book += bookValue(a);
+  });
+  const rows = Object.values(byDept).sort((a, b) => b.original - a.original);
+  return {
+    totalOriginal: rows.reduce((s, r) => s + r.original, 0),
+    totalBook: rows.reduce((s, r) => s + r.book, 0),
+    byType: rows,
+  };
+}
+
 // Supervisor's read-only "who raised it / who's fixing it / status" matrix
 export function oversightMatrix(tickets, users) {
   return tickets.map((t) => {

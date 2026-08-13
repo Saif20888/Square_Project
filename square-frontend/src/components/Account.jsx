@@ -39,7 +39,8 @@ export function AccountPanel({ ds, user, notify, onDone }) {
     if (profile && !form) {
       setForm({
         name: profile.name || "", dob: profile.dob || "", mobile: profile.mobile || "",
-        phone: profile.phone || "", location: profile.location || "", floor: profile.floor || "",
+        phone: profile.phone || "", officialNumber: profile.officialNumber || "",
+        location: profile.location || "", floor: profile.floor || "",
       });
     }
   }, [profile]);
@@ -74,7 +75,7 @@ export function AccountPanel({ ds, user, notify, onDone }) {
   if (!form) return null;
 
   const readonly = [
-    ["Unique ID", profile.employeeId || "—", true],
+    ["Employee ID", profile.employeeId || "—", true],
     ["Designation", profile.jobTitle || "—", false],
     ["Department", `${profile.department || "—"}${profile.unit ? ` · ${profile.unit} unit` : ""}`, false],
     ["Role", ROLE_LABEL[profile.role] || profile.role, false],
@@ -111,21 +112,26 @@ export function AccountPanel({ ds, user, notify, onDone }) {
               <label className="sq-field"><span className="sq-label">Emergency contact number</span>
                 <input className="sq-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. +8801811223344" />
               </label>
+              <label className="sq-field"><span className="sq-label">Official number</span>
+                <input className="sq-input" value={form.officialNumber} onChange={(e) => setForm({ ...form, officialNumber: e.target.value })} placeholder="e.g. +8801911223344" />
+              </label>
+            </div>
+            <div className="sq-form-row">
               <label className="sq-field"><span className="sq-label">Location</span>
                 <select className="sq-input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value, floor: "" })}>
                   <option value="">—</option>
                   {ds.locations.map((l) => <option key={l.id} value={l.name}>{l.name}</option>)}
                 </select>
               </label>
+              {form.location && (
+                <label className="sq-field"><span className="sq-label">Floor</span>
+                  <select className="sq-input" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })}>
+                    <option value="">—</option>
+                    {floorsFor(form.location, ds.locations).map((f) => <option key={f} value={f}>Floor {f}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
-            {form.location && (
-              <label className="sq-field"><span className="sq-label">Floor</span>
-                <select className="sq-input" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })}>
-                  <option value="">—</option>
-                  {floorsFor(form.location, ds.locations).map((f) => <option key={f} value={f}>Floor {f}</option>)}
-                </select>
-              </label>
-            )}
             <div className="sq-form-actions">
               <Btn variant="primary" type="submit" icon={Save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Btn>
             </div>

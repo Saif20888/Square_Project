@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive } from "lucide-react";
+import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight } from "lucide-react";
 import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
@@ -17,6 +17,9 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const [scrapTarget, setScrapTarget] = useState(null);
   const [scrapReason, setScrapReason] = useState("");
   const [scrapBusy, setScrapBusy] = useState(false);
+  const [techDetail, setTechDetail] = useState(null); // ledger row, or null
+  const [techYear, setTechYear] = useState("ALL");
+  const [techMonth, setTechMonth] = useState("ALL");
   const [acceptTarget, setAcceptTarget] = useState(null);
   const [acceptedBy, setAcceptedBy] = useState("");
   const [acceptBusy, setAcceptBusy] = useState(false);
@@ -72,6 +75,20 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const loanerPoolAssets = ds.assets.filter((a) => a.status === "AVAILABLE_IN_POOL" && a.poolCondition !== "NEW");
   const loaners = useMemo(() => loanerLedger(ds.assets, ds.users), [ds.assets, ds.users]);
   const ledger = useMemo(() => technicianLedger(ds.tickets, ds.users), [ds.tickets, ds.users]);
+  const ledgerMax = useMemo(() => ledger.reduce((m, r) => Math.max(m, r.assigned), 0), [ledger]);
+
+  // Per-technician drill-down (Ledger tab) — every ticket ever assigned to them,
+  // narrowable by year and/or calendar month.
+  const techTickets = useMemo(() => (techDetail ? ds.tickets.filter((t) => t.acceptedBy === techDetail.name) : []), [ds.tickets, techDetail]);
+  const techYears = useMemo(() => Array.from(new Set(techTickets.map((t) => new Date(t.createdAt).getFullYear()))).sort((a, b) => b - a), [techTickets]);
+  const techFiltered = useMemo(() => techTickets.filter((t) => {
+    const d = new Date(t.createdAt);
+    if (techYear !== "ALL" && d.getFullYear() !== Number(techYear)) return false;
+    if (techMonth !== "ALL" && d.getMonth() + 1 !== Number(techMonth)) return false;
+    return true;
+  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [techTickets, techYear, techMonth]);
+  const openTechDetail = (row) => { setTechDetail(row); setTechYear("ALL"); setTechMonth("ALL"); };
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const repairs = useMemo(() => repairLog(ds.assets, ds.users), [ds.assets, ds.users]);
   const pending = useMemo(() => pendingAssignments(ds.assets, ds.users), [ds.assets, ds.users]);
   const scrapped = useMemo(() => scrapRegistry(ds.assets), [ds.assets]);
@@ -293,6 +310,21 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
         {view === "account" && <AccountPanel ds={ds} user={user} notify={notify} onDone={() => setView("queue")} />}
         {view === "queue" && (
           <Section eyebrow="Straight to IT · no approval needed" title="Incoming tickets">
+            <div className="sq-card" style={{ marginBottom: 16 }}>
+              <div className="sq-pool-head"><BarChart3 size={16} /> IT Team productivity</div>
+              {ledger.length === 0 ? <Empty icon={BarChart3} title="No IT Team members yet" /> : (
+                <>
+                  {ledger.slice(0, 6).map((row) => (
+                    <Bar key={row.username} label={row.name} value={row.solved} max={ledgerMax || 1}
+                      sub={`${row.solved} solved · ${row.active} active / ${row.assigned} total`}
+                      tone={row.active > 0 ? "brand" : "ok"} />
+                  ))}
+                  <div className="sq-form-actions" style={{ marginTop: 10, justifyContent: "flex-start" }}>
+                    <Btn size="sm" icon={ChevronRight} onClick={() => setView("ledger")}>View details</Btn>
+                  </div>
+                </>
+              )}
+            </div>
             {openQueue.length === 0 ? (
               <Empty icon={Inbox} title="Queue is empty" hint="New tickets from employees land here immediately." />
             ) : (
@@ -307,6 +339,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                           <span className="sq-mono sq-dim">TKT-{String(t.id).padStart(6, "0")}</span>
                           <span className="sq-comp"><Ic size={13} />{t.problemType}</span>
                           {device && <span className="sq-mono sq-dim">{device.serialNumber}</span>}
+                          <span className="sq-comp sq-cell-desc"><Clock size={12} />{new Date(t.createdAt).toLocaleString()}</span>
                         </div>
                         <div className="sq-approval-title">{t.location} · Floor {t.floor} · {t.department}</div>
                         <div className="sq-cell-desc">{t.description}</div>
@@ -389,11 +422,12 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
             <div className="sq-card sq-table-card">
               {solving.length === 0 ? <Empty icon={Wrench} title="Nothing in progress" hint="Tickets you accept will show up here until resolved." /> : (
                 <table className="sq-table">
-                  <thead><tr><th>Ticket</th><th>Location</th><th>Problem</th><th>Accepted by</th><th className="sq-ta-r">Action</th></tr></thead>
+                  <thead><tr><th>Ticket</th><th>Submitted</th><th>Location</th><th>Problem</th><th>Accepted by</th><th className="sq-ta-r">Action</th></tr></thead>
                   <tbody>
                     {solving.map((t) => (
                       <tr key={t.id}>
                         <td className="sq-mono sq-dim">TKT-{String(t.id).padStart(6, "0")}</td>
+                        <td className="sq-mono sq-dim">{new Date(t.createdAt).toLocaleString()}</td>
                         <td className="sq-cell-desc">{t.location} · Floor {t.floor}</td>
                         <td>{t.problemType}</td>
                         <td>{t.acceptedBy}</td>
@@ -436,14 +470,15 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
             <div className="sq-card sq-table-card">
               {ledger.length === 0 ? <Empty icon={ClipboardList} title="No IT Team members yet" /> : (
                 <table className="sq-table">
-                  <thead><tr><th>IT Team member</th><th>Total assigned</th><th>Solved / closed</th><th>Active open</th></tr></thead>
+                  <thead><tr><th>IT Team member</th><th>Total assigned</th><th>Solved / closed</th><th>Active open</th><th className="sq-ta-r">Details</th></tr></thead>
                   <tbody>
                     {ledger.map((row) => (
-                      <tr key={row.username}>
+                      <tr key={row.username} className="sq-row-click" onClick={() => openTechDetail(row)}>
                         <td className="sq-cell-strong">{row.name}{!row.registered && <span className="sq-dim"> · unregistered</span>}</td>
                         <td className="sq-mono">{row.assigned}</td>
                         <td className="sq-mono sq-pos">{row.solved}</td>
                         <td className="sq-mono">{row.active}</td>
+                        <td className="sq-ta-r"><ChevronRight size={16} className="sq-dim" /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -586,6 +621,47 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
             </div>
           </Section>
         )}
+
+      {/* Ledger drill-down — one technician's full work history, filterable by year/month */}
+      <Modal open={!!techDetail} onClose={() => setTechDetail(null)} title={techDetail?.name || ""}
+        sub={techDetail ? `${techDetail.assigned} assigned · ${techDetail.solved} solved · ${techDetail.active} active` : ""}>
+        {techDetail && (
+          <div className="sq-form">
+            <div className="sq-form-row">
+              <label className="sq-field"><span className="sq-label">Year</span>
+                <select className="sq-input" value={techYear} onChange={(e) => setTechYear(e.target.value)}>
+                  <option value="ALL">All years</option>
+                  {techYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <label className="sq-field"><span className="sq-label">Month</span>
+                <select className="sq-input" value={techMonth} onChange={(e) => setTechMonth(e.target.value)}>
+                  <option value="ALL">All months</option>
+                  {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="sq-card sq-table-card" style={{ maxHeight: 380, overflowY: "auto" }}>
+              {techFiltered.length === 0 ? <Empty icon={ClipboardList} title="No tickets in this range" /> : (
+                <table className="sq-table">
+                  <thead><tr><th>Ticket</th><th>Problem</th><th>Status</th><th>Submitted</th><th>Resolved</th></tr></thead>
+                  <tbody>
+                    {techFiltered.map((t) => (
+                      <tr key={t.id}>
+                        <td className="sq-mono sq-dim">TKT-{String(t.id).padStart(6, "0")}</td>
+                        <td>{t.problemType}</td>
+                        <td><Badge tone={t.status === "CLOSED" ? "ok" : t.status === "REJECTED" ? "crit" : "brand"} dot={false}>{t.status}</Badge></td>
+                        <td className="sq-mono sq-dim">{new Date(t.createdAt).toLocaleString()}</td>
+                        <td className="sq-mono sq-dim">{t.resolvedAt ? new Date(t.resolvedAt).toLocaleString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!acceptTarget} onClose={() => setAcceptTarget(null)} title="Accepted by?" sub={acceptTarget ? `TKT-${String(acceptTarget.id).padStart(6, "0")} · ${acceptTarget.problemType}` : ""}>
         <div className="sq-form">

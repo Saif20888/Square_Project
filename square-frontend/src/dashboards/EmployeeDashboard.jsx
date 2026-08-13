@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Home, FileText, Search, HelpCircle, UserRound, LogOut } from "lucide-react";
-import { PROBLEM_TYPES, PROBLEM_ICON, KB_ARTICLES, floorsFor } from "../data/constants";
+import { Plus, Home, FileText, Search, HelpCircle, UserRound, LogOut, Clock } from "lucide-react";
+import { PROBLEM_TYPES, PROBLEM_ICON, KB_ARTICLES, KB_CATEGORIES, floorsFor } from "../data/constants";
 import { Shell, Section } from "../components/Shell";
 import { Btn, Empty, Badge, StatusBadge, Stepper, Modal } from "../components/primitives";
 import { AccountPanel, SignOutModal } from "../components/Account";
@@ -21,6 +21,7 @@ export default function EmployeeDashboard({ ds, user, notify, onSignOut, homeTic
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState(null);
   const [kbSearch, setKbSearch] = useState("");
+  const [kbCategory, setKbCategory] = useState("ALL");
 
   const myAssets = ds.assets.filter((a) => a.userId === user.id);
   const myTickets = ds.tickets.filter((t) => t.raisedByUsername === user.username);
@@ -51,6 +52,7 @@ export default function EmployeeDashboard({ ds, user, notify, onSignOut, homeTic
   };
 
   const kbResults = KB_ARTICLES.filter((a) => {
+    if (kbCategory !== "ALL" && a.category !== kbCategory) return false;
     const q = kbSearch.trim().toLowerCase();
     if (!q) return true;
     return a.title.toLowerCase().includes(q) || a.category.toLowerCase().includes(q) || a.body.toLowerCase().includes(q);
@@ -90,6 +92,7 @@ export default function EmployeeDashboard({ ds, user, notify, onSignOut, homeTic
                     <div className="sq-req-meta">
                       <span className="sq-comp"><Ic size={13} strokeWidth={2.1} />{t.problemType}</span>
                       <span className="sq-cell-desc">{t.location} · Floor {t.floor} · {t.department}</span>
+                      <span className="sq-comp sq-cell-desc"><Clock size={12} />{new Date(t.createdAt).toLocaleString()}</span>
                     </div>
                     <div className="sq-req-desc">{t.description}</div>
                     <Stepper status={t.status} />
@@ -105,14 +108,20 @@ export default function EmployeeDashboard({ ds, user, notify, onSignOut, homeTic
 
       {view === "knowledge" && (
         <Section eyebrow="Self-service" title="Knowledge base">
-          <div className="sq-field" style={{ marginBottom: 16 }}>
+          <div className="sq-field" style={{ marginBottom: 12 }}>
             <div className="sq-search">
               <Search size={15} />
               <input className="sq-input sq-search-input" placeholder="Search articles… e.g. Wi‑Fi, printer, VPN" value={kbSearch} onChange={(e) => setKbSearch(e.target.value)} />
             </div>
           </div>
+          <div className="sq-chip-row" style={{ marginBottom: 16 }}>
+            <button type="button" className={`sq-chip${kbCategory === "ALL" ? " is-on" : ""}`} onClick={() => setKbCategory("ALL")}>All topics</button>
+            {KB_CATEGORIES.map((c) => (
+              <button type="button" key={c} className={`sq-chip${kbCategory === c ? " is-on" : ""}`} onClick={() => setKbCategory(c)}>{c}</button>
+            ))}
+          </div>
           {kbResults.length === 0 ? (
-            <Empty icon={Search} title="No articles match" hint="Try a different search term." />
+            <Empty icon={Search} title="No articles match" hint="Try a different search term or topic." />
           ) : (
             <div className="sq-grid cols-2">
               {kbResults.map((a) => (
