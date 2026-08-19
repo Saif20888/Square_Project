@@ -173,6 +173,7 @@ public class UserController {
                     "Designation, department and unit are changed by the Superuser."));
         }
         return userRepository.findById(id).<ResponseEntity<?>>map(u -> {
+            String oldJobTitle = u.getJobTitle();
             if (body.containsKey("name")) u.setName(str(body.get("name")));
             if (body.containsKey("dob")) u.setDob(parseDate(body.get("dob")));
             if (body.containsKey("mobile")) u.setMobile(str(body.get("mobile")));
@@ -192,7 +193,12 @@ public class UserController {
             User saved = userRepository.save(u);
             // Self-edits of your own contact details aren't privileged; only a
             // Superuser changing someone's position/place in the org is audit-worthy.
-            if (manager) {
+            // A designation change is logged as a promotion (or reassignment) in its
+            // own right, distinct from a plain department/unit/location edit.
+            if (manager && body.containsKey("jobTitle") && !java.util.Objects.equals(oldJobTitle, saved.getJobTitle())) {
+                audit.record(AuditService.EMPLOYEE_PROMOTED, saved.getUsername(),
+                        "By " + CurrentUser.username() + " — " + (oldJobTitle == null ? "—" : oldJobTitle) + " → " + saved.getJobTitle() + " · " + saved.getDepartment());
+            } else if (manager) {
                 audit.record(AuditService.PROFILE_UPDATED, saved.getUsername(),
                         "Updated by " + CurrentUser.username() + " — " + saved.getJobTitle() + " · " + saved.getDepartment());
             }

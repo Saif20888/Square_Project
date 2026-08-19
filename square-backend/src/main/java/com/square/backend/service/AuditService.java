@@ -29,6 +29,7 @@ public class AuditService {
     public static final String PASSWORD_CHANGED = "PASSWORD_CHANGED";
     public static final String EMPLOYEE_ONBOARDED = "EMPLOYEE_ONBOARDED";
     public static final String PROFILE_UPDATED = "PROFILE_UPDATED";
+    public static final String EMPLOYEE_PROMOTED = "EMPLOYEE_PROMOTED";
     public static final String ASSET_SCRAPPED = "ASSET_SCRAPPED";
     public static final String ASSET_ASSIGNED = "ASSET_ASSIGNED";
     public static final String ASSET_REGISTERED = "ASSET_REGISTERED";

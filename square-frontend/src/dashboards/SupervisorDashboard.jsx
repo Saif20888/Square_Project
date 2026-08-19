@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Home, Users, Layers, Trash2, ChevronRight, FileText, Search, Radio, Mail, Phone, Briefcase, Clock, PackagePlus, Check, X, AlertTriangle, Building2, Undo2, UserPlus, UserRound, LogOut, Eye, Settings, UserCog, Crown, HardDrive, Upload, KeyRound, Copy, BarChart3 } from "lucide-react";
+import { Home, Users, Layers, Trash2, ChevronRight, FileText, Search, Radio, Mail, Phone, Briefcase, Clock, PackagePlus, Check, X, AlertTriangle, Building2, Undo2, UserPlus, UserRound, LogOut, Eye, Settings, UserCog, Crown, HardDrive, Upload, KeyRound, Copy, BarChart3, TrendingUp } from "lucide-react";
 import { money, DESIGNATIONS, TOP_DESIGNATIONS, UNIQUE_DESIGNATIONS, COMMON_DESIGNATIONS, ROLE_LABEL, PENDING_ALERT_DAYS, floorsFor } from "../data/constants";
 import { oversightMatrix, warrantyLedger, scrapRegistry, pendingAssignments, yearsOfService, departmentAssets, agingTickets, technicianLedger } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
@@ -45,6 +45,10 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
   const [manageTarget, setManageTarget] = useState(null);
   const [manageForm, setManageForm] = useState(null);
   const [manageBusy, setManageBusy] = useState(false);
+  // "Promote" — a quick, focused designation change (department/location stay put)
+  const [promoteTarget, setPromoteTarget] = useState(null);
+  const [promoteDesignation, setPromoteDesignation] = useState("");
+  const [promoteBusy, setPromoteBusy] = useState(false);
   // "Assign device" — the Superuser hands a stock device to an employee
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignDeviceId, setAssignDeviceId] = useState("");
@@ -233,6 +237,30 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
     setManageBusy(false);
     if (r.ok) { notify(`${manageTarget.name}'s position updated.`, "ok"); setManageTarget(null); }
     else notify("Couldn't update the employee.", "crit");
+  };
+
+  const openPromote = (person) => {
+    setPromoteTarget(person);
+    setPromoteDesignation(person.jobTitle || DESIGNATIONS[0] || "");
+  };
+
+  const savePromote = async () => {
+    if (!promoteTarget || !promoteDesignation) return;
+    if (promoteDesignation === promoteTarget.jobTitle) { notify("That's already their designation.", "crit"); return; }
+    // Same one-per-department rule as the full Manage flow.
+    if (UNIQUE_DESIGNATIONS.includes(promoteDesignation)) {
+      const clash = ds.users.find((u) => u.id !== promoteTarget.id && !u.offboarded
+        && u.jobTitle === promoteDesignation && u.department === promoteTarget.department);
+      if (clash) {
+        notify(`${promoteTarget.department} already has a ${promoteDesignation} (${clash.name}). Only one is allowed per department.`, "crit");
+        return;
+      }
+    }
+    setPromoteBusy(true);
+    const r = await ds.updateProfile(promoteTarget.id, { jobTitle: promoteDesignation });
+    setPromoteBusy(false);
+    if (r.ok) { notify(`${promoteTarget.name} promoted to ${promoteDesignation}.`, "ok"); setPromoteTarget(null); }
+    else notify("Couldn't update the employee's designation.", "crit");
   };
 
   const openOffboarding = async (username) => {
@@ -490,6 +518,7 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
                             )}
                             <div className="sq-row-actions" style={{ justifyContent: "flex-start" }}>
                               <Btn size="sm" icon={HardDrive} onClick={() => openAssign(person)}>Assign device</Btn>
+                              <Btn size="sm" icon={TrendingUp} onClick={() => openPromote(person)}>Promote</Btn>
                               <Btn size="sm" icon={UserCog} onClick={() => openManage(person)}>Manage</Btn>
                               <Btn size="sm" icon={FileText} onClick={() => openOffboarding(person.username)}>Start offboarding</Btn>
                             </div>
@@ -741,6 +770,25 @@ export default function SupervisorDashboard({ ds, user, notify, onSignOut, homeT
             <div className="sq-form-actions">
               <Btn type="button" onClick={() => setManageTarget(null)}>Cancel</Btn>
               <Btn variant="primary" onClick={saveManage} disabled={manageBusy}>{manageBusy ? "Saving…" : "Save changes"}</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Superuser promotes an employee — a focused designation-only change */}
+      <Modal open={!!promoteTarget} onClose={() => setPromoteTarget(null)} title="Promote employee"
+        sub={promoteTarget ? `${promoteTarget.name} · ${promoteTarget.employeeId || ""} · currently ${promoteTarget.jobTitle || "—"}` : ""}>
+        {promoteTarget && (
+          <div className="sq-form">
+            <label className="sq-field"><span className="sq-label">New designation</span>
+              <select className="sq-input" value={promoteDesignation} onChange={(e) => setPromoteDesignation(e.target.value)} autoFocus>
+                {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <p className="sq-cell-desc">Department and place of work stay the same — use Manage instead for a transfer.</p>
+            <div className="sq-form-actions">
+              <Btn type="button" onClick={() => setPromoteTarget(null)}>Cancel</Btn>
+              <Btn variant="primary" onClick={savePromote} disabled={promoteBusy}>{promoteBusy ? "Saving…" : "Confirm promotion"}</Btn>
             </div>
           </div>
         )}

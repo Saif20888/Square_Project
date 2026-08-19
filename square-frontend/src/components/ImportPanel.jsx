@@ -46,6 +46,17 @@ const EMPLOYEE_FIELDS = [
   { field: "location", label: "Office", patterns: [/location/i, /office/i, /branch/i] },
   { field: "floor", label: "Floor", patterns: [/floor/i] },
 ];
+// Only used when importMode === "promotions" — a dedicated, unambiguous sheet
+// of employee-ID + new designation (and, optionally, department/unit/date/notes).
+const PROMOTION_FIELDS = [
+  { field: "employeeId", label: "Employee ID", patterns: [/emp(loyee)?\.?\s*id/i, /^id$/i, /unique\s*id/i] },
+  { field: "name", label: "Name", patterns: [/^(full\s*)?name$/i, /employee\s*name/i] },
+  { field: "newDesignation", label: "New designation", patterns: [/new\s*designation/i, /promoted?\s*to/i, /new\s*title/i, /new\s*position/i, /designation/i, /position/i, /job\s*title/i, /^title$/i] },
+  { field: "newDepartment", label: "New department (optional)", patterns: [/new\s*depart/i, /transfer/i, /depart|dept/i] },
+  { field: "newUnit", label: "New unit (optional)", patterns: [/unit/i] },
+  { field: "effectiveDate", label: "Effective date (optional)", patterns: [/effective/i, /promotion\s*date/i, /^date$/i] },
+  { field: "notes", label: "Notes (optional)", patterns: [/note/i, /remark/i, /reason/i] },
+];
 
 const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
 const looksLikeIp = (v) => /^\d{1,3}(\.\d{1,3}){3}$/.test(String(v).trim());
@@ -199,13 +210,24 @@ export function ImportPanel({ ds, notify, user }) {
             return null;
           }).filter(Boolean);
         };
-        const devMap = mapCols(DEVICE_FIELDS);
-        const empMap = mapCols(EMPLOYEE_FIELDS);
-        const devScore = devMap.reduce((s, m) => s + (m.field === "serialNumber" ? 3 : 1), 0);
-        const empScore = empMap.reduce((s, m) => s + (m.field === "email" || m.field === "designation" ? 3 : 1), 0);
-        const entity = devScore >= empScore ? "devices" : "employees";
-        const mapping = entity === "devices" ? devMap : empMap;
-        if (mapping.length < 2) continue;
+        let entity, mapping;
+        if (importMode === "promotions") {
+          // Its own mode, never mixed with employee/device auto-detection — a
+          // "Designation" column means something different here (the NEW
+          // designation for an existing employee, not a new hire's).
+          const promMap = mapCols(PROMOTION_FIELDS);
+          if (promMap.length < 2) continue;
+          entity = "promotions";
+          mapping = promMap;
+        } else {
+          const devMap = mapCols(DEVICE_FIELDS);
+          const empMap = mapCols(EMPLOYEE_FIELDS);
+          const devScore = devMap.reduce((s, m) => s + (m.field === "serialNumber" ? 3 : 1), 0);
+          const empScore = empMap.reduce((s, m) => s + (m.field === "email" || m.field === "designation" ? 3 : 1), 0);
+          entity = devScore >= empScore ? "devices" : "employees";
+          mapping = entity === "devices" ? devMap : empMap;
+          if (mapping.length < 2) continue;
+        }
 
         const rows = dataRows.map((r, i) => {
           const rec = { __row: headerIdx + i + 2, __sheet: sheetName };
@@ -230,7 +252,7 @@ export function ImportPanel({ ds, notify, user }) {
                 || (u.employeeId || "").toLowerCase() === ownerKey.toLowerCase() || u.username.toLowerCase() === ownerKey.toLowerCase())) || null;
             }
             rec.department = rec.department ? bestMatch(rec.department, deptNames) : null;
-          } else {
+          } else if (entity === "employees") {
             rec.name = String(rec.name || "").trim();
             rec.email = String(rec.email || "").trim().toLowerCase();
             rec.employeeId = String(rec.employeeId || "").trim();
@@ -244,6 +266,21 @@ export function ImportPanel({ ds, notify, user }) {
             rec.mobile = String(rec.mobile || "").trim();
             rec.phone = String(rec.phone || "").trim();
             rec.officialNumber = String(rec.officialNumber || "").trim();
+          } else {
+            // Promotions — resolve against the CURRENT roster by Employee ID
+            // first (reliable, exact); fall back to an exact name match.
+            rec.employeeId = String(rec.employeeId || "").trim();
+            rec.name = String(rec.name || "").trim();
+            rec.rawNewDesignation = String(rec.newDesignation || "").trim();
+            rec.newDesignation = bestMatch(rec.rawNewDesignation, DESIGNATIONS);
+            rec.rawNewDepartment = String(rec.newDepartment || "").trim();
+            rec.newDepartment = rec.rawNewDepartment ? bestMatch(rec.rawNewDepartment, deptNames) : null;
+            rec.newUnit = rec.newUnit ? bestMatch(rec.newUnit, HR_ADMIN_UNITS) : null;
+            rec.effectiveDate = toIsoDate(rec.effectiveDate);
+            rec.notes = String(rec.notes || "").trim();
+            rec.targetUser = rec.employeeId
+              ? ds.users.find((u) => !u.offboarded && (u.employeeId || "").toLowerCase() === rec.employeeId.toLowerCase()) || null
+              : (rec.name ? ds.users.find((u) => !u.offboarded && norm(u.name) === norm(rec.name)) || null : null);
           }
           return rec;
         });
@@ -252,7 +289,7 @@ export function ImportPanel({ ds, notify, user }) {
 
       if (!found.length) { notify("Couldn't recognize any importable sheet — download the template to see the expected format.", "crit"); setBusy(false); return; }
 
-      const wantEntity = importMode === "employees" ? "employees" : importMode === "devices" ? "devices" : null;
+      const wantEntity = importMode === "employees" ? "employees" : importMode === "devices" ? "devices" : importMode === "promotions" ? "promotions" : null;
       const kept = wantEntity ? found.filter((b) => b.entity === wantEntity) : found;
       const ignored = wantEntity ? found.filter((b) => b.entity !== wantEntity) : [];
       if (!kept.length) {
@@ -316,6 +353,31 @@ export function ImportPanel({ ds, notify, user }) {
           }
           if (rec.department === HR_ADMIN_DEPT && !rec.unit) {
             add("unit", `Row ${rec.__row}${rec.name ? ` (${rec.name})` : ""}: HR and Admin is split into HR, Admin and IT — which unit? (IT joins the IT Team.)`, "select", HR_ADMIN_UNITS, "");
+          }
+        } else if (batch.entity === "promotions") {
+          if (!rec.employeeId && !rec.name) {
+            add("employeeId", `Row ${rec.__row}: no Employee ID or name given — I can't tell who this is.`, "text");
+          } else if (!rec.targetUser) {
+            const who = rec.employeeId ? `Employee ID "${rec.employeeId}"` : `"${rec.name}"`;
+            add("employeeId", `Row ${rec.__row}: couldn't find an active employee with ${who}. Fix the ID, or skip the row.`, "text", null, rec.employeeId || "");
+          }
+          if (!rec.newDesignation) {
+            add("newDesignation", `Row ${rec.__row}${rec.name ? ` (${rec.name})` : ""}: ${rec.rawNewDesignation ? `"${rec.rawNewDesignation}" isn't one of the SQUARE designations` : "no new designation given"}. Which should it be?`, "select", DESIGNATIONS, "");
+          } else if (rec.targetUser && rec.newDesignation === rec.targetUser.jobTitle) {
+            add("newDesignation", `Row ${rec.__row} (${rec.targetUser.name}): already holds ${rec.newDesignation} — nothing would change. Pick a different designation, or skip the row.`, "select", DESIGNATIONS, "");
+          } else if (rec.targetUser && UNIQUE_DESIGNATIONS.includes(rec.newDesignation)) {
+            const dept = rec.newDepartment || rec.targetUser.department;
+            const holder = ds.users.find((u) => !u.offboarded && u.id !== rec.targetUser.id && u.jobTitle === rec.newDesignation && u.department === dept);
+            if (holder) {
+              add("newDesignation", `Row ${rec.__row} (${rec.targetUser.name}): ${dept} already has a ${rec.newDesignation} (${holder.name}) — only one is allowed. Pick a different designation.`, "select", DESIGNATIONS, "");
+            }
+          }
+          if (rec.rawNewDepartment && !rec.newDepartment) {
+            add("newDepartment", `Row ${rec.__row}${rec.name ? ` (${rec.name})` : ""}: I couldn't match "${rec.rawNewDepartment}" to any department.`, "select", deptNames, "");
+          }
+          const effDept = rec.newDepartment || rec.targetUser?.department;
+          if (effDept === HR_ADMIN_DEPT && !(rec.newUnit || rec.targetUser?.unit)) {
+            add("newUnit", `Row ${rec.__row}${rec.name ? ` (${rec.name})` : ""}: HR and Admin is split into HR, Admin and IT — which unit?`, "select", HR_ADMIN_UNITS, "");
           }
         } else {
           if (!rec.serialNumber) add("serialNumber", `Row ${rec.__row}${rec.deviceName ? ` (${rec.deviceName})` : ""}: no serial or asset number — every device needs one.`, "text");
@@ -399,9 +461,13 @@ export function ImportPanel({ ds, notify, user }) {
     else if (/mail/.test(t)) fieldHint = "email";
     else if (/serial/.test(t)) fieldHint = "serialNumber";
     else if (/owner|assign|give (it|the device)/.test(t)) fieldHint = "owner";
+    else if (/employee\s*id|emp\.?\s*id/.test(t)) fieldHint = "employeeId";
     else if (/name/.test(t)) fieldHint = "name";
 
-    let candidates = fieldHint ? targets.filter((i) => i.field === fieldHint) : targets;
+    // Promotion issues use "newDesignation"/"newDepartment"/"newUnit" — same
+    // words, different field key — so a hint matches either spelling.
+    const newField = fieldHint ? `new${fieldHint[0].toUpperCase()}${fieldHint.slice(1)}` : null;
+    let candidates = fieldHint ? targets.filter((i) => i.field === fieldHint || i.field === newField) : targets;
     if (!candidates.length) candidates = targets;
     const actions = [];
 
@@ -494,6 +560,12 @@ export function ImportPanel({ ds, notify, user }) {
     if (!found) return;
     setBusy(true);
     const ok = [], skipped = [], creds = [];
+    const promotedIds = new Set();
+    // Tracks which "department|unique designation" slots are taken as rows commit,
+    // so two promotions in the same file can't both claim the same unique title —
+    // the analyze-time check alone can't see this, since neither row holds it yet.
+    const claimedUniqueSlots = new Set(ds.users.filter((u) => !u.offboarded && UNIQUE_DESIGNATIONS.includes(u.jobTitle))
+      .map((u) => `${u.department}|${u.jobTitle}`));
 
     const skipSet = new Set();
     fixes.forEach((f) => {
@@ -503,6 +575,9 @@ export function ImportPanel({ ds, notify, user }) {
       if (!v) return;
       if (f.field === "owner") {
         rec.ownerUser = v === "— keep in inventory —" ? null : ds.users.find((u) => u.name === v) || null;
+      } else if (f.field === "employeeId" && found[f.bi].entity === "promotions") {
+        rec.employeeId = v;
+        rec.targetUser = ds.users.find((u) => !u.offboarded && (u.employeeId || "").toLowerCase() === v.toLowerCase()) || null;
       } else rec[f.field] = f.field === "email" ? v.toLowerCase() : v;
     });
 
@@ -526,7 +601,7 @@ export function ImportPanel({ ds, notify, user }) {
           });
           if (r.ok) { ok.push({ key: rec.email, text: `${rec.name} → ${rec.department || deptNames[0]}${rec.unit ? ` (${rec.unit} unit)` : ""} as ${rec.designation || "—"}` }); creds.push({ user: rec.email, pass: r.tempPassword }); }
           else skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: r.error || "Server rejected the record" });
-        } else {
+        } else if (batch.entity === "devices") {
           if (!rec.serialNumber || !rec.deviceName) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Missing serial or device name" }); continue; }
           if (ds.assets.some((a) => a.serialNumber === rec.serialNumber) || ok.some((o) => o.key === rec.serialNumber)) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: `Serial ${rec.serialNumber} already exists` }); continue; }
           const r = await ds.registerDevice({
@@ -542,6 +617,36 @@ export function ImportPanel({ ds, notify, user }) {
           });
           if (r.ok) ok.push({ key: rec.serialNumber, text: `${rec.serialNumber} · ${rec.deviceName}${rec.ownerUser ? ` → ${rec.ownerUser.name}` : " → inventory (New)"}` });
           else skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Server rejected the record" });
+        } else {
+          const target = rec.targetUser;
+          if (!target) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "No matching employee found" }); continue; }
+          if (!rec.newDesignation) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Missing new designation" }); continue; }
+          if (promotedIds.has(target.id)) { skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: `${target.name} was already promoted earlier in this file` }); continue; }
+          if (UNIQUE_DESIGNATIONS.includes(rec.newDesignation)) {
+            const destDept = rec.newDepartment || target.department;
+            const oldKey = `${target.department}|${target.jobTitle}`;
+            const newKey = `${destDept}|${rec.newDesignation}`;
+            if (newKey !== oldKey && claimedUniqueSlots.has(newKey)) {
+              skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: `${destDept} already has a ${rec.newDesignation} — only one is allowed per department` });
+              continue;
+            }
+            claimedUniqueSlots.delete(oldKey);
+            claimedUniqueSlots.add(newKey);
+          }
+          const payload = { jobTitle: rec.newDesignation };
+          if (rec.newDepartment) {
+            payload.department = rec.newDepartment;
+            payload.unit = rec.newDepartment === HR_ADMIN_DEPT ? (rec.newUnit || target.unit || "HR") : null;
+          } else if (rec.newUnit && target.department === HR_ADMIN_DEPT) {
+            payload.unit = rec.newUnit;
+          }
+          const r = await ds.updateProfile(target.id, payload);
+          if (r.ok) {
+            promotedIds.add(target.id);
+            const extra = [rec.newDepartment ? `moved to ${rec.newDepartment}` : null, rec.effectiveDate ? `effective ${rec.effectiveDate}` : null, rec.notes || null].filter(Boolean).join(" · ");
+            ok.push({ key: `promo-${target.id}`, text: `${target.name} (${target.employeeId || target.username}): ${target.jobTitle || "—"} → ${rec.newDesignation}${extra ? ` · ${extra}` : ""}` });
+          }
+          else skipped.push({ row: rec.__row, sheet: rec.__sheet, reason: "Server rejected the update" });
         }
       }
     }
@@ -592,8 +697,15 @@ export function ImportPanel({ ds, notify, user }) {
             <button className={importMode === "both" ? "is-on" : ""} onClick={() => setImportMode("both")} disabled={busy}>Employees & devices</button>
             <button className={importMode === "employees" ? "is-on" : ""} onClick={() => setImportMode("employees")} disabled={busy}>Employees only</button>
             <button className={importMode === "devices" ? "is-on" : ""} onClick={() => setImportMode("devices")} disabled={busy}>Devices only</button>
+            <button className={importMode === "promotions" ? "is-on" : ""} onClick={() => setImportMode("promotions")} disabled={busy}>Promotions</button>
           </div>
         </div>
+        {importMode === "promotions" && (
+          <p className="sq-cell-desc" style={{ marginBottom: 10 }}>
+            One row per promoted (or transferred) employee. Only <strong>Employee ID</strong> and <strong>New designation</strong> are
+            required — department, unit, effective date and notes are optional. Everyone is matched against the current roster by Employee ID.
+          </p>
+        )}
         <div className="sq-warranty-actions" style={{ flexWrap: "wrap" }}>
           <Btn variant="primary" icon={Upload} onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy && !progress ? "Scanning…" : "Upload Excel / CSV"}
