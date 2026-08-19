@@ -3,9 +3,11 @@ import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Chec
 import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
-import { Empty, Btn, Modal, Bar, Badge } from "../components/primitives";
+import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
 import { AccountPanel, SignOutModal } from "../components/Account";
 import { MyDevicesPanel } from "../components/MyDevices";
+
+const PROBLEM_TONE = { "Hardware Malfunction": "crit", "Network/Wi-Fi Outage": "warn", "Software Crash": "info", "Printer Error": "neutral", "Other": "brand" };
 
 /* ----------------------------------- IT Team ------------------------------------- */
 export default function TechDashboard({ ds, user, notify, onSignOut, homeTick }) {
@@ -76,6 +78,22 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const loaners = useMemo(() => loanerLedger(ds.assets, ds.users), [ds.assets, ds.users]);
   const ledger = useMemo(() => technicianLedger(ds.tickets, ds.users), [ds.tickets, ds.users]);
   const ledgerMax = useMemo(() => ledger.reduce((m, r) => Math.max(m, r.assigned), 0), [ledger]);
+  const ledgerDonut = useMemo(() => ledger.filter((r) => r.solved > 0)
+    .map((r, i) => ({ label: r.name, value: r.solved, tone: ["brand", "info", "warn", "crit", "neutral"][i % 5] })), [ledger]);
+  const ledgerSolvedTotal = useMemo(() => ledger.reduce((s, r) => s + r.solved, 0), [ledger]);
+  const problemBreakdown = useMemo(() => {
+    const counts = {};
+    const resolved = {};
+    ds.tickets.forEach((t) => {
+      counts[t.problemType] = (counts[t.problemType] || 0) + 1;
+      if (t.status === "CLOSED") resolved[t.problemType] = (resolved[t.problemType] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([label, value]) => ({ label, value, tone: PROBLEM_TONE[label] || "neutral", resolved: resolved[label] || 0, rate: value ? Math.round(((resolved[label] || 0) / value) * 100) : 0 }))
+      .sort((a, b) => b.value - a.value);
+  }, [ds.tickets]);
+  const problemMax = useMemo(() => problemBreakdown.reduce((m, c) => Math.max(m, c.value), 0), [problemBreakdown]);
+  const [problemDetailOpen, setProblemDetailOpen] = useState(false);
 
   // Per-technician drill-down (Ledger tab) — every ticket ever assigned to them,
   // narrowable by year and/or calendar month.
@@ -310,19 +328,44 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
         {view === "account" && <AccountPanel ds={ds} user={user} notify={notify} onDone={() => setView("queue")} />}
         {view === "queue" && (
           <Section eyebrow="Straight to IT · no approval needed" title="Incoming tickets">
-            <div className="sq-card" style={{ marginBottom: 16 }}>
-              <div className="sq-pool-head"><BarChart3 size={16} /> IT Team productivity</div>
-              {ledger.length === 0 ? <Empty icon={BarChart3} title="No IT Team members yet" /> : (
-                <>
-                  {ledger.slice(0, 6).map((row) => (
-                    <Bar key={row.username} label={row.name} value={row.solved} max={ledgerMax || 1}
-                      sub={`${row.solved} solved · ${row.active} active / ${row.assigned} total`}
-                      tone={row.active > 0 ? "brand" : "ok"} />
-                  ))}
-                  <div className="sq-form-actions" style={{ marginTop: 10, justifyContent: "flex-start" }}>
-                    <Btn size="sm" icon={ChevronRight} onClick={() => setView("ledger")}>View details</Btn>
+            <div className="sq-grid cols-2" style={{ marginBottom: 16 }}>
+              <div className="sq-card" style={{ display: "flex", flexDirection: "column" }}>
+                <div className="sq-pool-head"><BarChart3 size={16} /> IT Team productivity</div>
+                {ledger.length === 0 ? <Empty icon={BarChart3} title="No IT Team members yet" /> : (
+                  <>
+                    {ledgerDonut.length > 0 && (
+                      <div className="sq-donut-row" style={{ marginBottom: 14 }}>
+                        <Donut data={ledgerDonut} centerValue={ledgerSolvedTotal} centerLabel="solved" />
+                        <DonutLegend data={ledgerDonut} />
+                      </div>
+                    )}
+                    {ledger.slice(0, 6).map((row) => (
+                      <Bar key={row.username} label={row.name} value={row.solved} max={ledgerMax || 1}
+                        sub={`${row.solved} solved · ${row.active} active / ${row.assigned} total`}
+                        tone={row.active > 0 ? "brand" : "ok"} />
+                    ))}
+                    <div className="sq-form-actions" style={{ marginTop: "auto", paddingTop: 10, justifyContent: "flex-start" }}>
+                      <Btn size="sm" icon={ChevronRight} onClick={() => setView("ledger")}>View details</Btn>
+                    </div>
+                  </>
+                )}
+              </div>
+              {problemBreakdown.length > 0 && (
+                <div className="sq-card" style={{ display: "flex", flexDirection: "column" }}>
+                  <div className="sq-pool-head"><BarChart3 size={16} /> Tickets by problem type</div>
+                  <div className="sq-donut-row" style={{ marginBottom: 14 }}>
+                    <Donut data={problemBreakdown} centerValue={ds.tickets.length} centerLabel="tickets" />
+                    <DonutLegend data={problemBreakdown} />
                   </div>
-                </>
+                  {problemBreakdown.slice(0, 6).map((c) => (
+                    <Bar key={c.label} label={c.label} value={c.value} max={problemMax || 1}
+                      sub={`${c.value} · ${ds.tickets.length ? Math.round((c.value / ds.tickets.length) * 100) : 0}% of tickets`}
+                      tone={c.tone} />
+                  ))}
+                  <div className="sq-form-actions" style={{ marginTop: "auto", paddingTop: 10, justifyContent: "flex-start" }}>
+                    <Btn size="sm" icon={ChevronRight} onClick={() => setProblemDetailOpen(true)}>View details</Btn>
+                  </div>
+                </div>
               )}
             </div>
             {openQueue.length === 0 ? (
@@ -467,6 +510,28 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
 
         {view === "ledger" && (
           <Section eyebrow="Productivity & workload" title="IT Team ledger">
+            {(ledgerDonut.length > 0 || problemBreakdown.length > 0) && (
+              <div className="sq-grid cols-2" style={{ marginBottom: 16 }}>
+                {ledgerDonut.length > 0 && (
+                  <div className="sq-card">
+                    <div className="sq-pool-head"><BarChart3 size={16} /> Solved tickets by team member</div>
+                    <div className="sq-donut-row">
+                      <Donut data={ledgerDonut} centerValue={ledgerSolvedTotal} centerLabel="solved" />
+                      <DonutLegend data={ledgerDonut} />
+                    </div>
+                  </div>
+                )}
+                {problemBreakdown.length > 0 && (
+                  <div className="sq-card">
+                    <div className="sq-pool-head"><BarChart3 size={16} /> Tickets by problem type</div>
+                    <div className="sq-donut-row">
+                      <Donut data={problemBreakdown} centerValue={ds.tickets.length} centerLabel="tickets" />
+                      <DonutLegend data={problemBreakdown} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="sq-card sq-table-card">
               {ledger.length === 0 ? <Empty icon={ClipboardList} title="No IT Team members yet" /> : (
                 <table className="sq-table">
@@ -659,6 +724,20 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </table>
               )}
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Problem-type breakdown — count, share, and resolution rate per problem */}
+      <Modal open={problemDetailOpen} onClose={() => setProblemDetailOpen(false)} title="Tickets by problem type"
+        sub={`${ds.tickets.length} ticket${ds.tickets.length === 1 ? "" : "s"} total`}>
+        {problemBreakdown.length === 0 ? <Empty icon={BarChart3} title="No tickets yet" /> : (
+          <div className="sq-stack">
+            {problemBreakdown.map((c) => (
+              <Bar key={c.label} label={c.label} value={c.value} max={problemMax || 1}
+                sub={`${c.value} · ${ds.tickets.length ? Math.round((c.value / ds.tickets.length) * 100) : 0}% of tickets · ${c.resolved} solved · ${c.rate}% resolution rate`}
+                tone={c.tone} />
+            ))}
           </div>
         )}
       </Modal>
