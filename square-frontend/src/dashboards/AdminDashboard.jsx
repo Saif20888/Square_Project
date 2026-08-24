@@ -38,7 +38,7 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
     return { open, solving, resolved, problems, problemMax, resolveRate, count: t.length };
   }, [t]);
 
-  const expiredAssets = useMemo(() => ds.assets.filter((a) => a.status !== "SCRAPPED" && a.warrantyDaysRemaining <= 0).length, [ds.assets]);
+  const expiredAssets = useMemo(() => ds.assets.filter((a) => a.serialNumber != null && a.status !== "SCRAPPED" && a.warrantyDaysRemaining <= 0).length, [ds.assets]);
   const [valueGroupBy, setValueGroupBy] = useState("type"); // type | department
   const valuation = useMemo(
     () => (valueGroupBy === "department" ? assetValuationByDepartment(ds.users, ds.assets) : assetValuation(ds.assets)),
@@ -113,7 +113,7 @@ export default function AdminDashboard({ ds, user, notify, onSignOut, homeTick }
                 <div className="sq-health-head"><Server size={15} /> Platform</div>
                 <div className="sq-health-grid">
                   <div><span className="sq-eyebrow">Datasource</span><div className={`sq-mono ${ds.mode === "live" ? "sq-pos" : "sq-warnt"}`}>{ds.mode === "live" ? "PostgreSQL · connected" : "Demo · backend offline"}</div></div>
-                  <div><span className="sq-eyebrow">Assets tracked</span><div className="sq-mono">{ds.assets.length}</div></div>
+                  <div><span className="sq-eyebrow">Assets tracked</span><div className="sq-mono">{ds.assets.filter((a) => a.serialNumber != null).length}</div></div>
                   <div><span className="sq-eyebrow">Resolve rate</span><div className="sq-mono">{metrics.resolveRate}%</div></div>
                 </div>
               </div>

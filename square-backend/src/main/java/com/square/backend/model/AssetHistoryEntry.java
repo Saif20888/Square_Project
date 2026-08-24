@@ -5,27 +5,28 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * Append-only log for a {@link StockItem} — state-change events and plain
+ * Append-only log for an {@link Asset} — state-change events and plain
  * usage/portion log entries live side by side here, newest first, so a
- * product's whole life can be read from one trail.
+ * product's whole life can be read from one trail. Covers both serialized
+ * devices and bulk stock rows.
  */
 @Entity
-@Table(name = "stock_history", indexes = {
-    @Index(name = "idx_stock_history_item", columnList = "stock_item_id")
+@Table(name = "asset_history", indexes = {
+    @Index(name = "idx_asset_history_item", columnList = "asset_id")
 })
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class StockHistoryEntry {
+public class AssetHistoryEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "stock_item_id", nullable = false)
-    private Long stockItemId;
+    @Column(name = "asset_id", nullable = false)
+    private Long assetId;
 
     @Column(nullable = false)
     private String action;

@@ -20,7 +20,9 @@ public class Asset {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    // Null for a bulk stock row (quantity > 1, no single unit to serialize) —
+    // every individually-tracked device still has one.
+    @Column(unique = true)
     private String serialNumber;
 
     @Column(nullable = false)
@@ -41,8 +43,9 @@ public class Asset {
     @Column(columnDefinition = "TEXT")
     private String specifications;
 
+    // Null for a bulk stock row — those don't have a per-employee lifecycle,
+    // stockState below governs them instead.
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private AssetStatus status;
 
     private LocalDate purchaseDate;
@@ -73,6 +76,24 @@ public class Asset {
     // Scrap Registry
     private String scrapReason;
     private LocalDate scrappedAt;
+
+    // --- General IT stock: bulk items tracked by quantity rather than one row
+    //     per unit. A serialized device (above) leaves these null; a bulk
+    //     stock row leaves serialNumber/status null and uses these instead. ---
+    @Enumerated(EnumType.STRING)
+    private StockCategory category;    // computer/laptop/printer -> asset, other -> non-asset
+
+    @Builder.Default
+    private int quantity = 1;
+
+    @Enumerated(EnumType.STRING)
+    private StockState stockState;     // USABLE -> NOT_USABLE -> SCRAP, one-way
+
+    @Enumerated(EnumType.STRING)
+    private StockCondition stockCondition;
+
+    private String notUsableReason;
+    private LocalDate movedToNotUsableAt;
 }
 
 

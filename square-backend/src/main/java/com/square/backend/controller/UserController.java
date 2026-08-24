@@ -3,6 +3,7 @@ package com.square.backend.controller;
 import com.square.backend.model.Asset;
 import com.square.backend.model.AssetStatus;
 import com.square.backend.model.Notification;
+import com.square.backend.model.StockCategory;
 import com.square.backend.model.User;
 import com.square.backend.repository.AssetRepository;
 import com.square.backend.repository.DepartmentRepository;
@@ -134,10 +135,12 @@ public class UserController {
             double price = 0;
             try { if (body.get("originalValue") != null) price = Double.parseDouble(body.get("originalValue").toString()); } catch (NumberFormatException ignored) {}
             LocalDate warranty = parseDate(body.get("warrantyExpiry"));
+            String deviceKind = str(body.get("deviceKind"));
             assetRepository.save(Asset.builder()
                     .serialNumber(serial)
                     .deviceType(deviceName)
-                    .deviceKind(str(body.get("deviceKind")))
+                    .deviceKind(deviceKind)
+                    .category(StockCategory.fromDeviceKind(deviceKind, deviceName))
                     .ipAddress(str(body.get("ipAddress")))
                     .assetCategory(str(body.get("assetCategory")))
                     .assetNumber(assetNumber)

@@ -1,22 +1,32 @@
 package com.square.backend.service;
 
 import com.square.backend.model.Asset;
+import com.square.backend.model.AssetHistoryEntry;
 import com.square.backend.model.AssetStatus;
 import com.square.backend.model.Notification;
+import com.square.backend.model.StockCategory;
+import com.square.backend.model.StockCondition;
+import com.square.backend.model.StockState;
+import com.square.backend.repository.AssetHistoryRepository;
 import com.square.backend.repository.AssetRepository;
 import com.square.backend.repository.NotificationRepository;
 import com.square.backend.repository.UserRepository;
+import com.square.backend.security.CurrentUser;
 import com.square.backend.web.ApiExceptionHandler.BadRequestException;
 import com.square.backend.web.ApiExceptionHandler.ConflictException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.NoSuchElementException;
 import java.util.Set;
 
 @Service
 public class AssetService {
+
+    public static final String DEFAULT_STOCK_STORAGE = "IT Backup Support";
 
     @Autowired
     private AssetRepository assetRepository;
@@ -27,14 +37,23 @@ public class AssetService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private AssetHistoryRepository historyRepository;
+
     private Asset find(Long id) {
         return assetRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Asset not found with ID: " + id));
     }
 
     /** Guards a transition against the asset's current status — everything below is
-     *  a state machine even though it was never enforced as one. */
+     *  a state machine even though it was never enforced as one. Bulk stock rows
+     *  (no serial number) have no status at all, so this is checked first — without
+     *  it, a stock item's id hitting one of these endpoints would fail with a
+     *  confusing "currently null" message instead of a clear one. */
     private void requireStatus(Asset asset, Set<AssetStatus> allowed, String action) {
+        if (asset.getSerialNumber() == null) {
+            throw new ConflictException("Can't " + action + " — this is general stock, not a serialized device.");
+        }
         if (!allowed.contains(asset.getStatus())) {
             throw new ConflictException("Can't " + action + " — this asset is currently "
                     + asset.getStatus() + ".");
@@ -209,6 +228,116 @@ public class AssetService {
         }
         asset.setPendingUserId(null);
         return assetRepository.save(asset);
+    }
+
+    // ===================================================================
+    // General IT stock — bulk items tracked by quantity (serialNumber and
+    // status are left null; stockState governs the usable/not-usable/scrap
+    // lifecycle instead of AssetStatus). Same table, same history log as the
+    // serialized devices above — a bulk item is just an Asset with no serial.
+    // ===================================================================
+
+    private String actor() {
+        var session = CurrentUser.session();
+        return session == null ? "system" : session.username();
+    }
+
+    private void log(Long assetId, String action, String reason, Integer quantityMoved,
+                      String amountUsed, Integer daysUsed, Long usedByUserId, String usedByName) {
+        historyRepository.save(AssetHistoryEntry.builder()
+                .assetId(assetId).action(action).reason(reason).quantityMoved(quantityMoved)
+                .amountUsed(amountUsed).daysUsed(daysUsed).usedByUserId(usedByUserId).usedByName(usedByName)
+                .actorUsername(actor()).at(LocalDateTime.now()).build());
+    }
+
+    public Asset registerStock(String name, StockCategory category, StockCondition condition, int quantity, String storageLocation) {
+        if (name == null || name.trim().isEmpty()) throw new BadRequestException("Give this stock item a name.");
+        if (quantity < 1) throw new BadRequestException("Quantity must be at least 1.");
+        Asset item = Asset.builder()
+                .deviceType(name.trim())
+                .category(category)
+                .quantity(quantity)
+                .stockState(StockState.USABLE)
+                .stockCondition(condition == null ? StockCondition.NEW : condition)
+                .storageLocation(storageLocation == null || storageLocation.trim().isEmpty() ? DEFAULT_STOCK_STORAGE : storageLocation.trim())
+                .purchaseDate(LocalDate.now())
+                .usefulLifeYears(4)
+                .build();
+        Asset saved = assetRepository.save(item);
+        log(saved.getId(), "REGISTERED", null, quantity, null, null, null, null);
+        return saved;
+    }
+
+    // usable -> not usable, usable -> scrap, not usable -> scrap. Anything else
+    // (including moving out of scrap) is rejected — scrap is a one-way terminal state.
+    @Transactional
+    public Asset moveStock(Long id, StockState toState, String reason, Integer quantity) {
+        Asset item = find(id);
+        if (item.getStockState() == null) {
+            throw new ConflictException("Not a stock item — use the device workflow for serialized assets.");
+        }
+        if (toState == StockState.USABLE) {
+            throw new ConflictException("Stock can't be moved back to usable.");
+        }
+        boolean allowed = (item.getStockState() == StockState.USABLE && (toState == StockState.NOT_USABLE || toState == StockState.SCRAP))
+                || (item.getStockState() == StockState.NOT_USABLE && toState == StockState.SCRAP);
+        if (!allowed) {
+            throw new ConflictException("Can't move this item from " + item.getStockState() + " to " + toState + ".");
+        }
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new BadRequestException("A reason is required.");
+        }
+        int moveQty = (quantity == null || quantity <= 0 || quantity >= item.getQuantity()) ? item.getQuantity() : quantity;
+        String action = toState == StockState.SCRAP ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE";
+
+        if (moveQty < item.getQuantity()) {
+            // Partial move — split the moved quantity into its own row, leave the rest behind.
+            item.setQuantity(item.getQuantity() - moveQty);
+            assetRepository.save(item);
+            Asset split = Asset.builder()
+                    .deviceType(item.getDeviceType()).category(item.getCategory()).stockCondition(item.getStockCondition())
+                    .quantity(moveQty).stockState(toState).storageLocation(item.getStorageLocation())
+                    .purchaseDate(item.getPurchaseDate()).usefulLifeYears(item.getUsefulLifeYears())
+                    .notUsableReason(toState == StockState.NOT_USABLE ? reason.trim() : null)
+                    .movedToNotUsableAt(toState == StockState.NOT_USABLE ? LocalDate.now() : null)
+                    .scrapReason(toState == StockState.SCRAP ? reason.trim() : null)
+                    .scrappedAt(toState == StockState.SCRAP ? LocalDate.now() : null)
+                    .build();
+            Asset savedSplit = assetRepository.save(split);
+            log(item.getId(), "QUANTITY_SPLIT", "Split off " + moveQty + " unit(s) to a new " + toState + " record", moveQty, null, null, null, null);
+            log(savedSplit.getId(), action, reason.trim(), moveQty, null, null, null, null);
+            return savedSplit;
+        }
+
+        item.setStockState(toState);
+        if (toState == StockState.NOT_USABLE) {
+            item.setNotUsableReason(reason.trim());
+            item.setMovedToNotUsableAt(LocalDate.now());
+        } else {
+            item.setScrapReason(reason.trim());
+            item.setScrappedAt(LocalDate.now());
+        }
+        Asset saved = assetRepository.save(item);
+        log(saved.getId(), action, reason.trim(), moveQty, null, null, null, null);
+        return saved;
+    }
+
+    // Pure log entry — records who used how much / for how long. Never changes
+    // quantity or state; it's a read-only trail, not an inventory transaction.
+    public Asset logStockUsage(Long id, Long usedByUserId, String usedByName, String amountUsed, Integer daysUsed, String note) {
+        Asset item = find(id);
+        if (item.getStockState() == null) {
+            throw new ConflictException("Not a stock item — use the device workflow for serialized assets.");
+        }
+        if ((usedByName == null || usedByName.trim().isEmpty()) && usedByUserId == null) {
+            throw new BadRequestException("Say who used this item.");
+        }
+        if ((amountUsed == null || amountUsed.trim().isEmpty()) && daysUsed == null) {
+            throw new BadRequestException("Give an amount/portion or a number of days used.");
+        }
+        log(item.getId(), "USAGE_LOGGED", note, null, amountUsed == null ? null : amountUsed.trim(), daysUsed, usedByUserId,
+                usedByName == null ? null : usedByName.trim());
+        return item;
     }
 }
 

@@ -11,8 +11,11 @@ export function bookValue(a) {
 
 // --- Derived views over the asset/user lists — identical whether the lists came
 //     from Postgres (live mode) or the SEED_* constants (demo mode). ---
+// Bulk stock rows (general IT stock, no serial number) share the assets table
+// but have no warranty/pool/repair lifecycle — every function below that
+// assumes a serialized device excludes them explicitly.
 export function warrantyLedger(assets) {
-  return assets.filter((a) => a.status !== "SCRAPPED");
+  return assets.filter((a) => a.serialNumber != null && a.status !== "SCRAPPED");
 }
 export function scrapRegistry(assets) {
   return assets.filter((a) => a.status === "SCRAPPED")
@@ -33,7 +36,7 @@ export function loanerLedger(assets, users) {
   });
 }
 export function assetValuation(assets) {
-  const active = assets.filter((a) => a.status !== "SCRAPPED");
+  const active = assets.filter((a) => a.serialNumber != null && a.status !== "SCRAPPED");
   const byType = {};
   active.forEach((a) => {
     const k = a.deviceType || "Other";
@@ -52,7 +55,7 @@ export function assetValuation(assets) {
 // Same shape as assetValuation, grouped by the owner's department instead of
 // device type — pool/scrapped devices (no owner) land in "Unassigned".
 export function assetValuationByDepartment(users, assets) {
-  const active = assets.filter((a) => a.status !== "SCRAPPED");
+  const active = assets.filter((a) => a.serialNumber != null && a.status !== "SCRAPPED");
   const byDept = {};
   active.forEach((a) => {
     const owner = users.find((u) => u.id === a.userId);
@@ -130,6 +133,7 @@ export function departmentAssets(users, assets, departments) {
   const rows = departments.map((d) => ({ department: d, total: 0, underWarranty: 0, expired: 0, inRepair: 0 }));
   const byName = Object.fromEntries(rows.map((r) => [r.department, r]));
   assets.forEach((a) => {
+    if (a.serialNumber == null) return; // bulk stock row, not a serialized device
     if (a.status === "SCRAPPED" || a.status === "AVAILABLE_IN_POOL") return;
     const owner = users.find((u) => u.id === a.userId);
     const dept = owner?.department || a.department;
@@ -200,7 +204,7 @@ export function activityFeed(tickets, assets, limit = 12) {
       });
     }
   });
-  assets.forEach((a) => {
+  assets.filter((a) => a.serialNumber != null).forEach((a) => {
     if (a.purchaseDate) events.push({ id: `an-${a.id}`, at: a.purchaseDate, kind: "asset-new", text: `${a.serialNumber} registered — ${a.deviceType}` });
     if (a.scrappedAt) events.push({ id: `as-${a.id}`, at: a.scrappedAt, kind: "asset-scrap", text: `${a.serialNumber} scrapped` });
   });

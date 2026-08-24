@@ -1,5 +1,9 @@
 import { useState, useRef, useCallback } from "react";
-import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, SEED_STOCK, SEED_STOCK_HISTORY, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty, STOCK_DEFAULT_STORAGE, stockAssetCategory } from "./constants";
+import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, SEED_STOCK, SEED_ASSET_HISTORY, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty, STOCK_DEFAULT_STORAGE, stockAssetCategory, categoryFromDeviceKind } from "./constants";
+
+// Bulk stock lives in the same assets table/list as serialized devices — the
+// seed data ships as two arrays for readability, joined here into one.
+const SEED_ASSETS_ALL = [...SEED_ASSETS, ...SEED_STOCK];
 
 /* ================================================================================= */
 /*  Data layer — network with graceful demo fallback                                 */
@@ -42,8 +46,7 @@ export const authFetch = (url, init = {}) => {
 export function useDataSource() {
   const [mode, setMode] = useState("connecting"); // connecting | live | demo
   const [tickets, setTickets] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [stock, setStock] = useState([]);
+  const [assets, setAssets] = useState([]); // serialized devices AND bulk stock rows, one list
   const [users, setUsers] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS);
@@ -56,9 +59,8 @@ export function useDataSource() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const demoTickets = useRef(null);
   const demoSeq = useRef(100);
-  const demoAssets = useRef(null);
-  const demoStock = useRef(null);         // general IT stock registry, demo-mode only
-  const demoStockHistory = useRef(null);  // per-item log entries, demo-mode only
+  const demoAssets = useRef(null);        // serialized devices AND bulk stock rows
+  const demoAssetHistory = useRef(null);  // per-item stock log entries, demo-mode only
   const demoOffboarding = useRef(null);    // username -> plan, demo-mode only
   const demoNotifications = useRef(null);  // IT Team inbox, demo-mode only
   const demoOffboarded = useRef(null);     // usernames removed from rosters, demo-mode only
@@ -73,9 +75,8 @@ export function useDataSource() {
     if (!demoTickets.current) {
       const saved = loadDemoStore();
       demoTickets.current = saved ? saved.tickets : SEED_TICKETS.map((t) => ({ ...t }));
-      demoAssets.current = saved ? saved.assets : SEED_ASSETS.map((a) => ({ ...a }));
-      demoStock.current = saved?.stock || SEED_STOCK.map((s) => ({ ...s }));
-      demoStockHistory.current = saved?.stockHistory || SEED_STOCK_HISTORY.map((h) => ({ ...h }));
+      demoAssets.current = saved ? saved.assets : SEED_ASSETS_ALL.map((a) => ({ ...a }));
+      demoAssetHistory.current = saved?.assetHistory || SEED_ASSET_HISTORY.map((h) => ({ ...h }));
       demoOffboarding.current = saved?.offboarding || {};
       demoNotifications.current = saved?.notifications || [];
       demoOffboarded.current = saved?.offboarded || [];
@@ -91,7 +92,7 @@ export function useDataSource() {
     try {
       localStorage.setItem(DEMO_KEY, JSON.stringify({
         tickets: demoTickets.current, assets: demoAssets.current,
-        stock: demoStock.current, stockHistory: demoStockHistory.current,
+        assetHistory: demoAssetHistory.current,
         offboarding: demoOffboarding.current, notifications: demoNotifications.current,
         offboarded: demoOffboarded.current, extraUsers: demoExtraUsers.current,
         profile: demoProfile.current, locations: demoLocations.current,
@@ -102,7 +103,6 @@ export function useDataSource() {
   };
   const ensureDemo = () => { ensureStore(); return demoTickets.current; };
   const ensureDemoAssets = () => { ensureStore(); return demoAssets.current; };
-  const ensureDemoStock = () => { ensureStore(); return demoStock.current; };
   // Seeded + Superuser-onboarded users, with My Account edits layered on top.
   const demoUsers = () => {
     ensureStore();
@@ -132,7 +132,7 @@ export function useDataSource() {
         events.push({ id: seq++, actorUsername: t.acceptedBy || "system", actorRole: "IT_TECH", action: "TICKET_RESOLVED", target: ref, detail: t.problemType, at: t.resolvedAt });
       }
     });
-    demoAssets.current.forEach((a) => {
+    demoAssets.current.filter((a) => a.serialNumber != null).forEach((a) => {
       if (a.scrappedAt) events.push({ id: seq++, actorUsername: "system", actorRole: null, action: "ASSET_SCRAPPED", target: a.serialNumber, detail: a.scrapReason || a.deviceType, at: a.scrappedAt });
     });
     demoExtraUsers.current.forEach((u) => {
@@ -159,13 +159,8 @@ export function useDataSource() {
       try {
         const ar = await authFetch(`${API_BASE}/api/assets`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ar.ok) setAssets(await ar.json());
-        else setAssets(SEED_ASSETS.map(withFreshWarranty));
-      } catch { setAssets(SEED_ASSETS.map(withFreshWarranty)); }
-      try {
-        const sr = await authFetch(`${API_BASE}/api/stock`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
-        if (sr.ok) setStock(await sr.json());
-        else setStock(SEED_STOCK);
-      } catch { setStock(SEED_STOCK); }
+        else setAssets(SEED_ASSETS_ALL.map(withFreshWarranty));
+      } catch { setAssets(SEED_ASSETS_ALL.map(withFreshWarranty)); }
       try {
         const ur = await authFetch(`${API_BASE}/api/users`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ur.ok) setUsers(await ur.json());
@@ -199,7 +194,6 @@ export function useDataSource() {
       if (!DEMO_FALLBACK_ENABLED) { setMode("offline"); return; }
       setTickets(ensureDemo().map((t) => ({ ...t })));
       setAssets(ensureDemoAssets().map((a) => withFreshWarranty({ ...a })));
-      setStock(ensureDemoStock().map((s) => ({ ...s })));
       setUsers(demoUsers());
       setNotifications(pendingDemoNotifications().map((n) => ({ ...n })));
       ensureStore();
@@ -266,29 +260,10 @@ export function useDataSource() {
   const mutateAsset = useCallback(async (livePath, init, demoApply) => {
     if (mode === "demo") {
       const store = ensureDemoAssets();
-      const data = demoApply(store);
-      persistDemo();
-      setAssets(store.map((a) => withFreshWarranty({ ...a })));
-      return { ok: true, data };
-    }
-    try {
-      const res = await authFetch(`${API_BASE}${livePath}`, init);
-      let data = null;
-      try { data = await res.json(); } catch { /* no body */ }
-      await refresh({ silent: true });
-      return { ok: res.ok, data };
-    } catch {
-      return { ok: false };
-    }
-  }, [mode, refresh]);
-
-  const mutateStock = useCallback(async (livePath, init, demoApply) => {
-    if (mode === "demo") {
-      const store = ensureDemoStock();
       const result = demoApply(store);
       if (result && result.ok === false) return result;
       persistDemo();
-      setStock(store.map((s) => ({ ...s })));
+      setAssets(store.map((a) => withFreshWarranty({ ...a })));
       return { ok: true, data: result };
     }
     try {
@@ -298,25 +273,31 @@ export function useDataSource() {
       if (!res.ok) return { ok: false, error: data?.message };
       await refresh({ silent: true });
       return { ok: true, data };
-    } catch { return { ok: false }; }
+    } catch {
+      return { ok: false };
+    }
   }, [mode, refresh]);
 
   // Registers a new general-stock item (usable, quantity, storage location).
+  // Lives in the same assets list as serialized devices — no serial number,
+  // no employee lifecycle, stockState drives usable/not-usable/scrap instead.
   const registerStock = (payload) =>
-    mutateStock(`/api/stock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+    mutateAsset(`/api/assets/stock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
       (store) => {
         const id = nextId(store);
         const item = {
-          id, name: payload.name, category: payload.category, assetCategory: stockAssetCategory(payload.category),
-          condition: payload.condition || "NEW",
-          quantity: Math.max(1, Number(payload.quantity) || 1), state: "USABLE",
+          id, serialNumber: null, status: null, deviceType: payload.name,
+          category: payload.category, stockClass: stockAssetCategory(payload.category),
+          stockCondition: payload.condition || "NEW",
+          quantity: Math.max(1, Number(payload.quantity) || 1), stockState: "USABLE",
           storageLocation: payload.storageLocation || STOCK_DEFAULT_STORAGE,
-          registeredAt: new Date().toISOString().slice(0, 10),
+          purchaseDate: new Date().toISOString().slice(0, 10),
+          userId: null, originalValue: 0, usefulLifeYears: 4, isLoaner: false,
           notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null,
         };
         store.unshift(item);
-        demoStockHistory.current.unshift({
-          id: ++demoSeq.current, stockItemId: id, action: "REGISTERED", reason: null, quantityMoved: item.quantity,
+        demoAssetHistory.current.unshift({
+          id: ++demoSeq.current, assetId: id, action: "REGISTERED", reason: null, quantityMoved: item.quantity,
           amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
         });
         return item;
@@ -324,18 +305,18 @@ export function useDataSource() {
 
   // Moves a stock item (or a split-off portion of it) usable -> not usable -> scrap.
   const moveStock = (id, toState, reason, quantity) =>
-    mutateStock(`/api/stock/${id}/move`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toState, reason, quantity }) },
+    mutateAsset(`/api/assets/${id}/move`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toState, reason, quantity }) },
       (store) => {
         const item = store.find((x) => x.id === id);
         if (!item) return { ok: false, error: "Stock item not found." };
-        const allowed = (item.state === "USABLE" && (toState === "NOT_USABLE" || toState === "SCRAP"))
-          || (item.state === "NOT_USABLE" && toState === "SCRAP");
-        if (!allowed) return { ok: false, error: `Can't move this item from ${item.state} to ${toState}.` };
+        const allowed = (item.stockState === "USABLE" && (toState === "NOT_USABLE" || toState === "SCRAP"))
+          || (item.stockState === "NOT_USABLE" && toState === "SCRAP");
+        if (!allowed) return { ok: false, error: `Can't move this item from ${item.stockState} to ${toState}.` };
         if (!reason || !reason.trim()) return { ok: false, error: "A reason is required." };
         const today = new Date().toISOString().slice(0, 10);
         const moveQty = (!quantity || quantity <= 0 || quantity >= item.quantity) ? item.quantity : quantity;
         const applyState = (target) => {
-          target.state = toState;
+          target.stockState = toState;
           if (toState === "NOT_USABLE") { target.notUsableReason = reason; target.movedToNotUsableAt = today; }
           else { target.scrapReason = reason; target.scrappedAt = today; }
         };
@@ -344,15 +325,15 @@ export function useDataSource() {
           const split = { ...item, id: nextId(store), quantity: moveQty, notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null };
           applyState(split);
           store.unshift(split);
-          demoStockHistory.current.unshift({
-            id: ++demoSeq.current, stockItemId: split.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
+          demoAssetHistory.current.unshift({
+            id: ++demoSeq.current, assetId: split.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
             reason, quantityMoved: moveQty, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
           });
           return split;
         }
         applyState(item);
-        demoStockHistory.current.unshift({
-          id: ++demoSeq.current, stockItemId: item.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
+        demoAssetHistory.current.unshift({
+          id: ++demoSeq.current, assetId: item.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
           reason, quantityMoved: moveQty, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
         });
         return item;
@@ -360,11 +341,11 @@ export function useDataSource() {
 
   // Pure log entry — who used how much / for how long. Never touches quantity or state.
   const logStockUsage = (id, payload) =>
-    mutateStock(`/api/stock/${id}/usage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+    mutateAsset(`/api/assets/${id}/usage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
       (store) => {
         const item = store.find((x) => x.id === id); if (!item) return;
-        demoStockHistory.current.unshift({
-          id: ++demoSeq.current, stockItemId: id, action: "USAGE_LOGGED", reason: payload.note || null,
+        demoAssetHistory.current.unshift({
+          id: ++demoSeq.current, assetId: id, action: "USAGE_LOGGED", reason: payload.note || null,
           quantityMoved: null, amountUsed: payload.amountUsed || null, daysUsed: payload.daysUsed != null ? payload.daysUsed : null,
           usedByUserId: payload.usedByUserId || null, usedByName: payload.usedByName || null,
           actorUsername: "you", at: new Date().toISOString(),
@@ -375,10 +356,10 @@ export function useDataSource() {
   const getStockHistory = useCallback(async (id) => {
     if (mode === "demo") {
       ensureStore();
-      return demoStockHistory.current.filter((h) => h.stockItemId === id).slice().sort((a, b) => new Date(b.at) - new Date(a.at));
+      return demoAssetHistory.current.filter((h) => h.assetId === id).slice().sort((a, b) => new Date(b.at) - new Date(a.at));
     }
     try {
-      const res = await authFetch(`${API_BASE}/api/stock/${id}/history`);
+      const res = await authFetch(`${API_BASE}/api/assets/${id}/history`);
       if (!res.ok) return [];
       return await res.json();
     } catch { return []; }
@@ -514,6 +495,7 @@ export function useDataSource() {
         const toInventory = payload.userId == null;
         const asset = {
           id, serialNumber: payload.serialNumber, deviceType: payload.deviceType, deviceKind: payload.deviceKind || null,
+          category: categoryFromDeviceKind(payload.deviceKind, payload.deviceType),
           prNumber: payload.prNumber || null, assetCategory: payload.assetCategory || null, assetNumber: payload.assetNumber || null,
           supplierName: payload.supplierName || null, department: payload.department || null, storageLocation: null,
           ipAddress: payload.ipAddress || null, specifications: payload.specifications || "",
@@ -737,7 +719,8 @@ export function useDataSource() {
         const warrantyExpiry = payload.warrantyExpiry || dateDaysAgo(-365);
         store.unshift({
           id: aid, serialNumber: payload.assetNumber || `SQ-${payload.employeeId || "U" + id}`,
-          deviceType: payload.deviceName, deviceKind: payload.deviceKind || null, specifications: "",
+          deviceType: payload.deviceName, deviceKind: payload.deviceKind || null,
+          category: categoryFromDeviceKind(payload.deviceKind, payload.deviceName), specifications: "",
           status: "ALLOCATED_IN_USE", warrantyExpiry, warrantyDaysRemaining: Math.round((new Date(warrantyExpiry).getTime() - Date.now()) / 86400000), userId: id,
           purchaseDate: new Date().toISOString().slice(0, 10), originalValue: Number(payload.originalValue) || 0, usefulLifeYears: 4,
           poolCondition: null, isLoaner: false, loanerIssuedAt: null, repairShop: null, sentToRepairAt: null,
@@ -820,7 +803,7 @@ export function useDataSource() {
   }, [mode]);
 
   return {
-    mode, tickets, assets, stock, users, notifications, locations, departments, importLogs, auditEvents, loading, sessionExpired, refresh, login,
+    mode, tickets, assets, users, notifications, locations, departments, importLogs, auditEvents, loading, sessionExpired, refresh, login,
     addImportLog,
     createTicket, acceptTicket, reject, resolveTicket,
     scrapAsset, assignAsset, issueLoaner, sendToRepair, repairReturn, warrantyReplace,

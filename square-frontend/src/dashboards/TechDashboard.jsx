@@ -171,13 +171,15 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
         || (r.holder?.name || "").toLowerCase().includes(q);
     });
 
-  // Stock Registry — general IT stock, grouped by usability tier
+  // General IT stock — bulk items living in the same assets list as serialized
+  // devices (no serial number), grouped by usability tier.
+  const stockItems = useMemo(() => ds.assets.filter((a) => a.serialNumber == null), [ds.assets]);
   const stockCounts = useMemo(() => ({
-    USABLE: ds.stock.filter((s) => s.state === "USABLE").length,
-    NOT_USABLE: ds.stock.filter((s) => s.state === "NOT_USABLE").length,
-    SCRAP: ds.stock.filter((s) => s.state === "SCRAP").length,
-  }), [ds.stock]);
-  const stockRows = useMemo(() => ds.stock.filter((s) => s.state === stockTier), [ds.stock, stockTier]);
+    USABLE: stockItems.filter((s) => s.stockState === "USABLE").length,
+    NOT_USABLE: stockItems.filter((s) => s.stockState === "NOT_USABLE").length,
+    SCRAP: stockItems.filter((s) => s.stockState === "SCRAP").length,
+  }), [stockItems]);
+  const stockRows = useMemo(() => stockItems.filter((s) => s.stockState === stockTier), [stockItems, stockTier]);
 
   const items = [
     { key: "queue", label: "Home", icon: Home, badge: openQueue.length || null },
@@ -187,7 +189,6 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     { key: "ledger", label: "Ledger", icon: ClipboardList },
     { key: "records", label: "Monthly records", icon: CalendarDays },
     { key: "pool", label: "IT support stock", icon: Boxes, badge: pending.length || null },
-    { key: "stock", label: "Stock Registry", icon: Archive },
     { key: "loaners", label: "Employee assign pool", icon: FileText, badge: loaners.length || null },
     { key: "mydevices", label: "My devices", icon: HardDrive },
     { key: "scrap", label: "Scrap", icon: Trash2 },
@@ -256,7 +257,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     setMoveBusy(true);
     const r = await ds.moveStock(moveTarget.item.id, moveTarget.toState, moveReason.trim(), qty);
     setMoveBusy(false);
-    if (r.ok) { notify(`${moveTarget.item.name} moved to ${moveTarget.toState === "SCRAP" ? "Scrap" : "Not usable"}.`, "ok"); setMoveTarget(null); }
+    if (r.ok) { notify(`${moveTarget.item.deviceType} moved to ${moveTarget.toState === "SCRAP" ? "Scrap" : "Not usable"}.`, "ok"); setMoveTarget(null); }
     else notify(r.error || "Couldn't move this stock item.", "crit");
   };
 
@@ -634,7 +635,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
         )}
 
         {view === "pool" && (
-          <Section eyebrow="New · repaired · used — the whole device stock in one place" title="IT support stock">
+          <Section eyebrow="Serialized devices & bulk stock — asset & non-asset, usable → not usable → scrap" title="IT support stock">
             <div className="sq-grid cols-3">
               <div className="sq-card sq-pool">
                 <div className="sq-pool-head"><PackagePlus size={16} /> New devices</div>
@@ -716,20 +717,17 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </table>
               )}
             </div>
-          </Section>
-        )}
 
-        {view === "stock" && (
-          <Section eyebrow="Usable → not usable → scrap — asset & non-asset, tracked by quantity" title="Stock Registry">
-            <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between" }}>
-              <div className="sq-segment">
-                <button className={stockTier === "USABLE" ? "is-on" : ""} onClick={() => setStockTier("USABLE")}>Usable ({stockCounts.USABLE})</button>
-                <button className={stockTier === "NOT_USABLE" ? "is-on" : ""} onClick={() => setStockTier("NOT_USABLE")}>Not usable ({stockCounts.NOT_USABLE})</button>
-                <button className={stockTier === "SCRAP" ? "is-on" : ""} onClick={() => setStockTier("SCRAP")}>Scrap ({stockCounts.SCRAP})</button>
+            {/* General IT stock — bulk items (asset & non-asset, tracked by quantity), same tab as the serialized device explorer above */}
+            <div className="sq-card" style={{ marginTop: 16 }}>
+              <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between" }}>
+                <div className="sq-segment">
+                  <button className={stockTier === "USABLE" ? "is-on" : ""} onClick={() => setStockTier("USABLE")}>Usable ({stockCounts.USABLE})</button>
+                  <button className={stockTier === "NOT_USABLE" ? "is-on" : ""} onClick={() => setStockTier("NOT_USABLE")}>Not usable ({stockCounts.NOT_USABLE})</button>
+                  <button className={stockTier === "SCRAP" ? "is-on" : ""} onClick={() => setStockTier("SCRAP")}>Scrap ({stockCounts.SCRAP})</button>
+                </div>
+                <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
               </div>
-              <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
-            </div>
-            <div className="sq-card sq-table-card">
               {stockRows.length === 0 ? (
                 <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
                   hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
@@ -745,15 +743,15 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                   <tbody>
                     {stockRows.map((s) => (
                       <tr key={s.id}>
-                        <td className="sq-cell-strong">{s.name}</td>
-                        <td><Badge tone={s.assetCategory === "ASSET" ? "brand" : "neutral"}>{STOCK_CATEGORY_LABEL[s.category] || s.category}</Badge></td>
-                        <td>{s.condition === "NEW" ? <Badge tone="ok">New</Badge> : <Badge tone="warn">Used</Badge>}</td>
+                        <td className="sq-cell-strong">{s.deviceType}</td>
+                        <td><Badge tone={s.stockClass === "ASSET" ? "brand" : "neutral"}>{STOCK_CATEGORY_LABEL[s.category] || s.category}</Badge></td>
+                        <td>{s.stockCondition === "NEW" ? <Badge tone="ok">New</Badge> : <Badge tone="warn">Used</Badge>}</td>
                         <td className="sq-mono">{s.quantity}</td>
                         <td className="sq-cell-desc">{s.storageLocation || "—"}</td>
                         <td className="sq-cell-desc">
                           {stockTier === "SCRAP" ? <>{s.scrapReason || "—"}<div className="sq-mono sq-dim">{s.scrappedAt || "—"}</div></>
                             : stockTier === "NOT_USABLE" ? <>{s.notUsableReason || "—"}<div className="sq-mono sq-dim">{s.movedToNotUsableAt || "—"}</div></>
-                            : <span className="sq-mono sq-dim">{s.registeredAt || "—"}</span>}
+                            : <span className="sq-mono sq-dim">{s.purchaseDate || "—"}</span>}
                         </td>
                         <td className="sq-ta-r">
                           <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -1080,7 +1078,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
       {/* Stock Registry — move usable/not-usable stock down a tier */}
       <Modal open={!!moveTarget} onClose={() => setMoveTarget(null)}
         title={moveTarget ? `Move to ${moveTarget.toState === "SCRAP" ? "Scrap" : "Not usable"}?` : ""}
-        sub={moveTarget ? `${moveTarget.item.name} · ${moveTarget.item.quantity} on hand` : ""}>
+        sub={moveTarget ? `${moveTarget.item.deviceType} · ${moveTarget.item.quantity} on hand` : ""}>
         {moveTarget && (
           <div className="sq-form">
             <label className="sq-field"><span className="sq-label">Reason</span>
@@ -1100,7 +1098,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
       </Modal>
 
       {/* Stock Registry — log a usage/portion event, read-only trail */}
-      <Modal open={!!usageTarget} onClose={() => setUsageTarget(null)} title="Log usage" sub={usageTarget ? usageTarget.name : ""}>
+      <Modal open={!!usageTarget} onClose={() => setUsageTarget(null)} title="Log usage" sub={usageTarget ? usageTarget.deviceType : ""}>
         {usageTarget && (
           <div className="sq-form">
             <label className="sq-field"><span className="sq-label">Used by (employee)</span>
@@ -1134,7 +1132,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
       </Modal>
 
       {/* Stock Registry — full history trail (state changes + usage log) */}
-      <Modal open={!!historyTarget} onClose={() => setHistoryTarget(null)} title="History" sub={historyTarget ? historyTarget.name : ""}>
+      <Modal open={!!historyTarget} onClose={() => setHistoryTarget(null)} title="History" sub={historyTarget ? historyTarget.deviceType : ""}>
         {historyLoading ? <div className="sq-cell-desc">Loading…</div>
           : historyEntries.length === 0 ? <Empty icon={History} title="No history yet" hint="Actions on this item will show up here." />
           : (

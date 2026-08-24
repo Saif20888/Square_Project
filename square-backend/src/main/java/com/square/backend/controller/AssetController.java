@@ -3,6 +3,10 @@ package com.square.backend.controller;
 import com.square.backend.model.Asset;
 import com.square.backend.model.AssetCondition;
 import com.square.backend.model.AssetStatus;
+import com.square.backend.model.StockCategory;
+import com.square.backend.model.StockCondition;
+import com.square.backend.model.StockState;
+import com.square.backend.repository.AssetHistoryRepository;
 import com.square.backend.repository.AssetRepository;
 import com.square.backend.web.Paging;
 import com.square.backend.service.AssetService;
@@ -33,6 +37,9 @@ public class AssetController {
 
     @Autowired
     private AssetRepository assetRepository;
+
+    @Autowired
+    private AssetHistoryRepository historyRepository;
 
     @Autowired
     private AssetService assetService;
@@ -78,10 +85,13 @@ public class AssetController {
         double price = 0;
         try { if (rawPrice != null) price = Double.parseDouble(rawPrice.toString()); } catch (NumberFormatException ignored) {}
         price = Math.min(MAX_ASSET_VALUE, Math.max(0, price));
+        String deviceKind = str(body.get("deviceKind"));
+        String deviceType = String.valueOf(body.get("deviceType"));
         Asset asset = Asset.builder()
                 .serialNumber(String.valueOf(body.get("serialNumber")))
-                .deviceType(String.valueOf(body.get("deviceType")))
-                .deviceKind(str(body.get("deviceKind")))
+                .deviceType(deviceType)
+                .deviceKind(deviceKind)
+                .category(StockCategory.fromDeviceKind(deviceKind, deviceType))
                 .prNumber(str(body.get("prNumber")))
                 .assetCategory(str(body.get("assetCategory")))
                 .assetNumber(str(body.get("assetNumber")))
@@ -226,6 +236,70 @@ public class AssetController {
         }
     }
 
+    @GetMapping("/{id}/history")
+    public ResponseEntity<List<Map<String, Object>>> getHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(historyRepository.findByAssetIdOrderByAtDesc(id).stream()
+                .map(h -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", h.getId());
+                    m.put("action", h.getAction());
+                    m.put("reason", h.getReason());
+                    m.put("quantityMoved", h.getQuantityMoved());
+                    m.put("amountUsed", h.getAmountUsed());
+                    m.put("daysUsed", h.getDaysUsed());
+                    m.put("usedByUserId", h.getUsedByUserId());
+                    m.put("usedByName", h.getUsedByName());
+                    m.put("actorUsername", h.getActorUsername());
+                    m.put("at", h.getAt());
+                    return m;
+                }).collect(Collectors.toList()));
+    }
+
+    // General IT stock — bulk items tracked by quantity. {"name","category","condition","quantity","storageLocation"}
+    @RequiresRole({ Roles.IT_TECH, Roles.SUPERVISOR })
+    @PostMapping("/stock")
+    public ResponseEntity<Map<String, Object>> registerStock(@RequestBody Map<String, Object> body) {
+        StockCategory category = enumOf(StockCategory.class, body.get("category"), "category");
+        StockCondition condition = body.get("condition") == null ? null : enumOf(StockCondition.class, body.get("condition"), "condition");
+        int quantity = intOf(body.get("quantity"));
+        Asset saved = assetService.registerStock(str(body.get("name")), category, condition, quantity, str(body.get("storageLocation")));
+        audit.record(AuditService.STOCK_REGISTERED, saved.getDeviceType(),
+                "Added " + saved.getQuantity() + " unit(s) — " + saved.getCategory() + " · " + saved.getStorageLocation());
+        return ResponseEntity.ok(toView(saved));
+    }
+
+    // {"toState": "NOT_USABLE"|"SCRAP", "reason": "...", "quantity": optional}
+    @RequiresRole({ Roles.IT_TECH, Roles.SUPERVISOR })
+    @PutMapping("/{id}/move")
+    public ResponseEntity<Map<String, Object>> moveStock(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            StockState toState = enumOf(StockState.class, body.get("toState"), "toState");
+            Integer quantity = body.get("quantity") == null ? null : intOf(body.get("quantity"));
+            Asset updated = assetService.moveStock(id, toState, str(body.get("reason")), quantity);
+            audit.record(AuditService.STOCK_STATE_CHANGED, updated.getDeviceType(),
+                    "Moved to " + toState + " — " + updated.getQuantity() + " unit(s) — reason: " + body.get("reason"));
+            return ResponseEntity.ok(toView(updated));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // {"usedByUserId": optional, "usedByName": optional, "amountUsed": optional, "daysUsed": optional, "note": optional}
+    @RequiresRole({ Roles.IT_TECH, Roles.SUPERVISOR })
+    @PostMapping("/{id}/usage")
+    public ResponseEntity<Map<String, Object>> logUsage(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            Long usedByUserId = body.get("usedByUserId") == null ? null : longOf(body.get("usedByUserId"));
+            Integer daysUsed = body.get("daysUsed") == null ? null : intOf(body.get("daysUsed"));
+            Asset item = assetService.logStockUsage(id, usedByUserId, str(body.get("usedByName")), str(body.get("amountUsed")), daysUsed, str(body.get("note")));
+            audit.record(AuditService.STOCK_USAGE_LOGGED, item.getDeviceType(),
+                    "Usage logged — by " + (str(body.get("usedByName")) != null ? body.get("usedByName") : "user id " + usedByUserId));
+            return ResponseEntity.ok(toView(item));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     private Map<String, Object> toView(Asset a) {
         Map<String, Object> m = new LinkedHashMap<>();
         long days = a.getWarrantyExpiry() == null ? 0
@@ -256,6 +330,16 @@ public class AssetController {
         m.put("pendingUserId", a.getPendingUserId());
         m.put("scrapReason", a.getScrapReason());
         m.put("scrappedAt", a.getScrappedAt());
+        m.put("category", a.getCategory());
+        // Distinct from "assetCategory" above (the Asset/Non-Asset choice made at
+        // registration, unrelated) — this is the computed ASSET/NON_ASSET class
+        // derived from the stock category (computer/laptop/printer -> asset).
+        m.put("stockClass", a.getCategory() == null ? null : (a.getCategory().isAsset() ? "ASSET" : "NON_ASSET"));
+        m.put("quantity", a.getQuantity());
+        m.put("stockState", a.getStockState());
+        m.put("stockCondition", a.getStockCondition());
+        m.put("notUsableReason", a.getNotUsableReason());
+        m.put("movedToNotUsableAt", a.getMovedToNotUsableAt());
         return m;
     }
 
@@ -263,6 +347,31 @@ public class AssetController {
         if (o == null) return null;
         String s = o.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    private int intOf(Object o) {
+        try {
+            return Integer.parseInt(String.valueOf(o).trim());
+        } catch (Exception e) {
+            throw new BadRequestException("Expected a whole number.");
+        }
+    }
+
+    private Long longOf(Object o) {
+        try {
+            return Long.valueOf(String.valueOf(o).trim());
+        } catch (Exception e) {
+            throw new BadRequestException("Expected a whole number.");
+        }
+    }
+
+    private <E extends Enum<E>> E enumOf(Class<E> type, Object o, String field) {
+        if (o == null) throw new BadRequestException("Missing " + field + ".");
+        try {
+            return Enum.valueOf(type, o.toString().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid " + field + ": " + o);
+        }
     }
 
     private Long parseUserId(Object raw) {
