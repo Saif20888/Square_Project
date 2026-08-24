@@ -43,6 +43,9 @@ public class AuditService {
     public static final String OFFBOARDING_SUBMITTED = "OFFBOARDING_SUBMITTED";
     public static final String ORG_CHANGED = "ORG_CHANGED";
     public static final String TICKET_RESOLVED = "TICKET_RESOLVED";
+    public static final String STOCK_REGISTERED = "STOCK_REGISTERED";
+    public static final String STOCK_STATE_CHANGED = "STOCK_STATE_CHANGED";
+    public static final String STOCK_USAGE_LOGGED = "STOCK_USAGE_LOGGED";
 
     @Autowired
     private AuditEventRepository repository;

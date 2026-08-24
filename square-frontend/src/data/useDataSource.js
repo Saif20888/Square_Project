@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty } from "./constants";
+import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, SEED_STOCK, SEED_STOCK_HISTORY, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty, STOCK_DEFAULT_STORAGE, stockAssetCategory } from "./constants";
 
 /* ================================================================================= */
 /*  Data layer — network with graceful demo fallback                                 */
@@ -43,6 +43,7 @@ export function useDataSource() {
   const [mode, setMode] = useState("connecting"); // connecting | live | demo
   const [tickets, setTickets] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [stock, setStock] = useState([]);
   const [users, setUsers] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS);
@@ -56,6 +57,8 @@ export function useDataSource() {
   const demoTickets = useRef(null);
   const demoSeq = useRef(100);
   const demoAssets = useRef(null);
+  const demoStock = useRef(null);         // general IT stock registry, demo-mode only
+  const demoStockHistory = useRef(null);  // per-item log entries, demo-mode only
   const demoOffboarding = useRef(null);    // username -> plan, demo-mode only
   const demoNotifications = useRef(null);  // IT Team inbox, demo-mode only
   const demoOffboarded = useRef(null);     // usernames removed from rosters, demo-mode only
@@ -71,6 +74,8 @@ export function useDataSource() {
       const saved = loadDemoStore();
       demoTickets.current = saved ? saved.tickets : SEED_TICKETS.map((t) => ({ ...t }));
       demoAssets.current = saved ? saved.assets : SEED_ASSETS.map((a) => ({ ...a }));
+      demoStock.current = saved?.stock || SEED_STOCK.map((s) => ({ ...s }));
+      demoStockHistory.current = saved?.stockHistory || SEED_STOCK_HISTORY.map((h) => ({ ...h }));
       demoOffboarding.current = saved?.offboarding || {};
       demoNotifications.current = saved?.notifications || [];
       demoOffboarded.current = saved?.offboarded || [];
@@ -86,6 +91,7 @@ export function useDataSource() {
     try {
       localStorage.setItem(DEMO_KEY, JSON.stringify({
         tickets: demoTickets.current, assets: demoAssets.current,
+        stock: demoStock.current, stockHistory: demoStockHistory.current,
         offboarding: demoOffboarding.current, notifications: demoNotifications.current,
         offboarded: demoOffboarded.current, extraUsers: demoExtraUsers.current,
         profile: demoProfile.current, locations: demoLocations.current,
@@ -96,6 +102,7 @@ export function useDataSource() {
   };
   const ensureDemo = () => { ensureStore(); return demoTickets.current; };
   const ensureDemoAssets = () => { ensureStore(); return demoAssets.current; };
+  const ensureDemoStock = () => { ensureStore(); return demoStock.current; };
   // Seeded + Superuser-onboarded users, with My Account edits layered on top.
   const demoUsers = () => {
     ensureStore();
@@ -155,6 +162,11 @@ export function useDataSource() {
         else setAssets(SEED_ASSETS.map(withFreshWarranty));
       } catch { setAssets(SEED_ASSETS.map(withFreshWarranty)); }
       try {
+        const sr = await authFetch(`${API_BASE}/api/stock`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
+        if (sr.ok) setStock(await sr.json());
+        else setStock(SEED_STOCK);
+      } catch { setStock(SEED_STOCK); }
+      try {
         const ur = await authFetch(`${API_BASE}/api/users`, { signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS) });
         if (ur.ok) setUsers(await ur.json());
         else setUsers(SEED_USERS);
@@ -187,6 +199,7 @@ export function useDataSource() {
       if (!DEMO_FALLBACK_ENABLED) { setMode("offline"); return; }
       setTickets(ensureDemo().map((t) => ({ ...t })));
       setAssets(ensureDemoAssets().map((a) => withFreshWarranty({ ...a })));
+      setStock(ensureDemoStock().map((s) => ({ ...s })));
       setUsers(demoUsers());
       setNotifications(pendingDemoNotifications().map((n) => ({ ...n })));
       ensureStore();
@@ -268,6 +281,108 @@ export function useDataSource() {
       return { ok: false };
     }
   }, [mode, refresh]);
+
+  const mutateStock = useCallback(async (livePath, init, demoApply) => {
+    if (mode === "demo") {
+      const store = ensureDemoStock();
+      const result = demoApply(store);
+      if (result && result.ok === false) return result;
+      persistDemo();
+      setStock(store.map((s) => ({ ...s })));
+      return { ok: true, data: result };
+    }
+    try {
+      const res = await authFetch(`${API_BASE}${livePath}`, init);
+      let data = null;
+      try { data = await res.json(); } catch { /* no body */ }
+      if (!res.ok) return { ok: false, error: data?.message };
+      await refresh({ silent: true });
+      return { ok: true, data };
+    } catch { return { ok: false }; }
+  }, [mode, refresh]);
+
+  // Registers a new general-stock item (usable, quantity, storage location).
+  const registerStock = (payload) =>
+    mutateStock(`/api/stock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      (store) => {
+        const id = nextId(store);
+        const item = {
+          id, name: payload.name, category: payload.category, assetCategory: stockAssetCategory(payload.category),
+          condition: payload.condition || "NEW",
+          quantity: Math.max(1, Number(payload.quantity) || 1), state: "USABLE",
+          storageLocation: payload.storageLocation || STOCK_DEFAULT_STORAGE,
+          registeredAt: new Date().toISOString().slice(0, 10),
+          notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null,
+        };
+        store.unshift(item);
+        demoStockHistory.current.unshift({
+          id: ++demoSeq.current, stockItemId: id, action: "REGISTERED", reason: null, quantityMoved: item.quantity,
+          amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
+        });
+        return item;
+      });
+
+  // Moves a stock item (or a split-off portion of it) usable -> not usable -> scrap.
+  const moveStock = (id, toState, reason, quantity) =>
+    mutateStock(`/api/stock/${id}/move`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toState, reason, quantity }) },
+      (store) => {
+        const item = store.find((x) => x.id === id);
+        if (!item) return { ok: false, error: "Stock item not found." };
+        const allowed = (item.state === "USABLE" && (toState === "NOT_USABLE" || toState === "SCRAP"))
+          || (item.state === "NOT_USABLE" && toState === "SCRAP");
+        if (!allowed) return { ok: false, error: `Can't move this item from ${item.state} to ${toState}.` };
+        if (!reason || !reason.trim()) return { ok: false, error: "A reason is required." };
+        const today = new Date().toISOString().slice(0, 10);
+        const moveQty = (!quantity || quantity <= 0 || quantity >= item.quantity) ? item.quantity : quantity;
+        const applyState = (target) => {
+          target.state = toState;
+          if (toState === "NOT_USABLE") { target.notUsableReason = reason; target.movedToNotUsableAt = today; }
+          else { target.scrapReason = reason; target.scrappedAt = today; }
+        };
+        if (moveQty < item.quantity) {
+          item.quantity -= moveQty;
+          const split = { ...item, id: nextId(store), quantity: moveQty, notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null };
+          applyState(split);
+          store.unshift(split);
+          demoStockHistory.current.unshift({
+            id: ++demoSeq.current, stockItemId: split.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
+            reason, quantityMoved: moveQty, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
+          });
+          return split;
+        }
+        applyState(item);
+        demoStockHistory.current.unshift({
+          id: ++demoSeq.current, stockItemId: item.id, action: toState === "SCRAP" ? "MOVED_TO_SCRAP" : "MOVED_TO_NOT_USABLE",
+          reason, quantityMoved: moveQty, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "you", at: new Date().toISOString(),
+        });
+        return item;
+      });
+
+  // Pure log entry — who used how much / for how long. Never touches quantity or state.
+  const logStockUsage = (id, payload) =>
+    mutateStock(`/api/stock/${id}/usage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      (store) => {
+        const item = store.find((x) => x.id === id); if (!item) return;
+        demoStockHistory.current.unshift({
+          id: ++demoSeq.current, stockItemId: id, action: "USAGE_LOGGED", reason: payload.note || null,
+          quantityMoved: null, amountUsed: payload.amountUsed || null, daysUsed: payload.daysUsed != null ? payload.daysUsed : null,
+          usedByUserId: payload.usedByUserId || null, usedByName: payload.usedByName || null,
+          actorUsername: "you", at: new Date().toISOString(),
+        });
+        return item;
+      });
+
+  const getStockHistory = useCallback(async (id) => {
+    if (mode === "demo") {
+      ensureStore();
+      return demoStockHistory.current.filter((h) => h.stockItemId === id).slice().sort((a, b) => new Date(b.at) - new Date(a.at));
+    }
+    try {
+      const res = await authFetch(`${API_BASE}/api/stock/${id}/history`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch { return []; }
+  }, [mode]);
 
   const createTicket = (payload) =>
     mutate(`/api/tickets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
@@ -705,11 +820,12 @@ export function useDataSource() {
   }, [mode]);
 
   return {
-    mode, tickets, assets, users, notifications, locations, departments, importLogs, auditEvents, loading, sessionExpired, refresh, login,
+    mode, tickets, assets, stock, users, notifications, locations, departments, importLogs, auditEvents, loading, sessionExpired, refresh, login,
     addImportLog,
     createTicket, acceptTicket, reject, resolveTicket,
     scrapAsset, assignAsset, issueLoaner, sendToRepair, repairReturn, warrantyReplace,
     requestNewDevice, approveAssignment, receiveDevice,
+    registerStock, moveStock, logStockUsage, getStockHistory,
     registerDevice, submitOffboarding, getOffboardingPlan,
     updateProfile, changePassword, onboardEmployee,
     addLocation, removeLocation, addDepartment, removeDepartment,

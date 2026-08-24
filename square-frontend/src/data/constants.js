@@ -98,7 +98,17 @@ export function deviceKindOf(asset) {
 export const deviceIconFor = (asset) => DEVICE_KIND_ICON[deviceKindOf(asset)];
 
 // --- Where IT stores devices received back from offboarded employees ---
-export const STORAGE_LOCATIONS = ["IT Closet", "Basement", "Sector 3"];
+export const STORAGE_LOCATIONS = ["IT Closet", "Basement", "Sector 3", "IT Backup Support"];
+
+// --- General IT stock registry: bulk items tracked by quantity, distinct from
+// the one-row-per-unit Asset system above. Computer/Laptop/Printer are assets
+// with a full history trail; everything else is non-asset (consumables, spares). ---
+export const STOCK_CATEGORIES = ["COMPUTER", "LAPTOP", "PRINTER", "OTHER"];
+export const STOCK_CATEGORY_LABEL = { COMPUTER: "Computer", LAPTOP: "Laptop", PRINTER: "Printer", OTHER: "Other" };
+export const STOCK_CONDITIONS = ["NEW", "USED"];
+export const STOCK_DEFAULT_STORAGE = "IT Backup Support";
+// Mirrors StockCategory.isAsset() on the backend — everything but OTHER is an asset.
+export const stockAssetCategory = (category) => (category === "OTHER" ? "NON_ASSET" : "ASSET");
 
 // A ticket that sits OPEN this many days triggers a supervisor alert.
 export const PENDING_ALERT_DAYS = 3;
@@ -322,6 +332,43 @@ export const SEED_ASSETS = [
     });
   }),
 ];
+
+let _sid = 0;
+const S = (over) => {
+  const merged = {
+    id: ++_sid, name: "", category: "OTHER", condition: "NEW", quantity: 1, state: "USABLE",
+    storageLocation: STOCK_DEFAULT_STORAGE, registeredAt: dateDaysAgo(30),
+    notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null, ...over,
+  };
+  return { ...merged, assetCategory: stockAssetCategory(merged.category) };
+};
+
+export const SEED_STOCK = [
+  S({ name: "Standard Desktop", category: "COMPUTER", condition: "NEW", quantity: 4, registeredAt: dateDaysAgo(20) }),
+  S({ name: "Model X Laptop", category: "LAPTOP", condition: "USED", quantity: 3, registeredAt: dateDaysAgo(200) }),
+  S({ name: "LaserJet Printer", category: "PRINTER", condition: "NEW", quantity: 2, registeredAt: dateDaysAgo(90) }),
+  S({ name: "HDMI Cable (5m spool)", category: "OTHER", condition: "NEW", quantity: 10, registeredAt: dateDaysAgo(60) }),
+  S({ name: "Toner Cartridge", category: "OTHER", condition: "NEW", quantity: 6, registeredAt: dateDaysAgo(15) }),
+  S({
+    name: "Legacy Workstation", category: "COMPUTER", condition: "USED", quantity: 2, state: "NOT_USABLE",
+    registeredAt: dateDaysAgo(500), notUsableReason: "Boots intermittently — suspected failing PSU", movedToNotUsableAt: dateDaysAgo(10),
+  }),
+  S({
+    name: "SQUARE Mobile Unit", category: "OTHER", condition: "USED", quantity: 1, state: "SCRAP",
+    registeredAt: dateDaysAgo(700), scrapReason: "Cracked board, water damage — beyond repair", scrappedAt: dateDaysAgo(5),
+  }),
+];
+
+export const SEED_STOCK_HISTORY = SEED_STOCK.flatMap((s) => {
+  const events = [{ id: s.id * 10 + 1, stockItemId: s.id, action: "REGISTERED", reason: null, quantityMoved: s.quantity, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "tech2", at: s.registeredAt }];
+  if (s.state === "NOT_USABLE" || s.state === "SCRAP") {
+    events.push({ id: s.id * 10 + 2, stockItemId: s.id, action: "MOVED_TO_NOT_USABLE", reason: s.notUsableReason || s.scrapReason, quantityMoved: s.quantity, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "tech2", at: s.movedToNotUsableAt || s.scrappedAt });
+  }
+  if (s.state === "SCRAP") {
+    events.push({ id: s.id * 10 + 3, stockItemId: s.id, action: "MOVED_TO_SCRAP", reason: s.scrapReason, quantityMoved: s.quantity, amountUsed: null, daysUsed: null, usedByUserId: null, usedByName: null, actorUsername: "tech2", at: s.scrappedAt });
+  }
+  return events;
+});
 
 /* ----------------------------------- Domain helpers ------------------------------ */
 export const LIFECYCLE = ["OPEN", "SOLVING", "CLOSED"];

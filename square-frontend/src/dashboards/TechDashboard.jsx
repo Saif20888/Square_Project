@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight } from "lucide-react";
-import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS } from "../data/constants";
+import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight, Archive, History, PenLine } from "lucide-react";
+import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
 import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
@@ -61,6 +61,30 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const [devFilter, setDevFilter] = useState("ALL"); // ALL | AVAILABLE | IN_USE
   const [availCond, setAvailCond] = useState("ALL"); // ALL | New | Used | Repaired
   const [useDept, setUseDept] = useState("ALL");
+
+  // Stock Registry: general IT stock (asset & non-asset, tracked by quantity)
+  const [stockTier, setStockTier] = useState("USABLE"); // USABLE | NOT_USABLE | SCRAP
+  const [addStockOpen, setAddStockOpen] = useState(false);
+  const [stockName, setStockName] = useState("");
+  const [stockCategory, setStockCategory] = useState("COMPUTER");
+  const [stockCondition, setStockCondition] = useState("NEW");
+  const [stockQuantity, setStockQuantity] = useState("1");
+  const [stockStorage, setStockStorage] = useState(STOCK_DEFAULT_STORAGE);
+  const [addStockBusy, setAddStockBusy] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null); // { item, toState }
+  const [moveReason, setMoveReason] = useState("");
+  const [moveQuantity, setMoveQuantity] = useState("");
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [usageTarget, setUsageTarget] = useState(null); // stock item
+  const [usageUserId, setUsageUserId] = useState("");
+  const [usageName, setUsageName] = useState("");
+  const [usageAmount, setUsageAmount] = useState("");
+  const [usageDays, setUsageDays] = useState("");
+  const [usageNote, setUsageNote] = useState("");
+  const [usageBusy, setUsageBusy] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState(null); // stock item
+  const [historyEntries, setHistoryEntries] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Keep the incoming queue and the notification inbox fresh without a manual reload
   useEffect(() => {
@@ -147,6 +171,14 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
         || (r.holder?.name || "").toLowerCase().includes(q);
     });
 
+  // Stock Registry — general IT stock, grouped by usability tier
+  const stockCounts = useMemo(() => ({
+    USABLE: ds.stock.filter((s) => s.state === "USABLE").length,
+    NOT_USABLE: ds.stock.filter((s) => s.state === "NOT_USABLE").length,
+    SCRAP: ds.stock.filter((s) => s.state === "SCRAP").length,
+  }), [ds.stock]);
+  const stockRows = useMemo(() => ds.stock.filter((s) => s.state === stockTier), [ds.stock, stockTier]);
+
   const items = [
     { key: "queue", label: "Home", icon: Home, badge: openQueue.length || null },
     { key: "notifications", label: "Notifications", icon: Bell, badge: dueNotifs.length || null },
@@ -155,6 +187,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     { key: "ledger", label: "Ledger", icon: ClipboardList },
     { key: "records", label: "Monthly records", icon: CalendarDays },
     { key: "pool", label: "IT support stock", icon: Boxes, badge: pending.length || null },
+    { key: "stock", label: "Stock Registry", icon: Archive },
     { key: "loaners", label: "Employee assign pool", icon: FileText, badge: loaners.length || null },
     { key: "mydevices", label: "My devices", icon: HardDrive },
     { key: "scrap", label: "Scrap", icon: Trash2 },
@@ -201,6 +234,53 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     setReceiveBusy(false);
     if (r.ok) { notify(`Device received — stored in ${storage}. IT support stock updated.`, "ok"); setReceiveTarget(null); }
     else notify("Couldn't receive the device.", "crit");
+  };
+
+  // Stock Registry handlers
+  const resetAddStock = () => { setStockName(""); setStockCategory("COMPUTER"); setStockCondition("NEW"); setStockQuantity("1"); setStockStorage(STOCK_DEFAULT_STORAGE); };
+  const doAddStock = async () => {
+    if (!stockName.trim()) { notify("Give this stock item a name.", "crit"); return; }
+    const qty = Math.max(1, Number(stockQuantity) || 1);
+    setAddStockBusy(true);
+    const r = await ds.registerStock({ name: stockName.trim(), category: stockCategory, condition: stockCondition, quantity: qty, storageLocation: stockStorage });
+    setAddStockBusy(false);
+    if (r.ok) { notify(`${stockName.trim()} added to the Stock Registry.`, "ok"); setAddStockOpen(false); resetAddStock(); }
+    else notify(r.error || "Couldn't add this stock item.", "crit");
+  };
+
+  const openMove = (item, toState) => { setMoveTarget({ item, toState }); setMoveReason(""); setMoveQuantity(String(item.quantity)); };
+  const doMove = async () => {
+    if (!moveTarget) return;
+    if (!moveReason.trim()) { notify("A reason is required.", "crit"); return; }
+    const qty = Math.max(1, Math.min(moveTarget.item.quantity, Number(moveQuantity) || moveTarget.item.quantity));
+    setMoveBusy(true);
+    const r = await ds.moveStock(moveTarget.item.id, moveTarget.toState, moveReason.trim(), qty);
+    setMoveBusy(false);
+    if (r.ok) { notify(`${moveTarget.item.name} moved to ${moveTarget.toState === "SCRAP" ? "Scrap" : "Not usable"}.`, "ok"); setMoveTarget(null); }
+    else notify(r.error || "Couldn't move this stock item.", "crit");
+  };
+
+  const openUsage = (item) => { setUsageTarget(item); setUsageUserId(""); setUsageName(""); setUsageAmount(""); setUsageDays(""); setUsageNote(""); };
+  const doLogUsage = async () => {
+    if (!usageTarget) return;
+    if (!usageUserId && !usageName.trim()) { notify("Say who used this item.", "crit"); return; }
+    if (!usageAmount.trim() && !usageDays) { notify("Give an amount/portion or a number of days used.", "crit"); return; }
+    setUsageBusy(true);
+    const r = await ds.logStockUsage(usageTarget.id, {
+      usedByUserId: usageUserId || null, usedByName: usageUserId ? null : usageName.trim() || null,
+      amountUsed: usageAmount.trim() || null, daysUsed: usageDays ? Number(usageDays) : null, note: usageNote.trim() || null,
+    });
+    setUsageBusy(false);
+    if (r.ok) { notify("Usage logged.", "ok"); setUsageTarget(null); }
+    else notify(r.error || "Couldn't log this usage.", "crit");
+  };
+
+  const openHistory = async (item) => {
+    setHistoryTarget(item);
+    setHistoryLoading(true);
+    const entries = await ds.getStockHistory(item.id);
+    setHistoryEntries(entries);
+    setHistoryLoading(false);
   };
 
   // Opens a printable month report; the browser's print dialog saves it as PDF.
@@ -639,6 +719,59 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
           </Section>
         )}
 
+        {view === "stock" && (
+          <Section eyebrow="Usable → not usable → scrap — asset & non-asset, tracked by quantity" title="Stock Registry">
+            <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between" }}>
+              <div className="sq-segment">
+                <button className={stockTier === "USABLE" ? "is-on" : ""} onClick={() => setStockTier("USABLE")}>Usable ({stockCounts.USABLE})</button>
+                <button className={stockTier === "NOT_USABLE" ? "is-on" : ""} onClick={() => setStockTier("NOT_USABLE")}>Not usable ({stockCounts.NOT_USABLE})</button>
+                <button className={stockTier === "SCRAP" ? "is-on" : ""} onClick={() => setStockTier("SCRAP")}>Scrap ({stockCounts.SCRAP})</button>
+              </div>
+              <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
+            </div>
+            <div className="sq-card sq-table-card">
+              {stockRows.length === 0 ? (
+                <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
+                  hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
+              ) : (
+                <table className="sq-table">
+                  <thead>
+                    <tr>
+                      <th>Item</th><th>Category</th><th>Condition</th><th>Qty</th><th>Stored at</th>
+                      <th>{stockTier === "SCRAP" ? "Scrap reason · date" : stockTier === "NOT_USABLE" ? "Reason · date" : "Registered"}</th>
+                      <th className="sq-ta-r">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stockRows.map((s) => (
+                      <tr key={s.id}>
+                        <td className="sq-cell-strong">{s.name}</td>
+                        <td><Badge tone={s.assetCategory === "ASSET" ? "brand" : "neutral"}>{STOCK_CATEGORY_LABEL[s.category] || s.category}</Badge></td>
+                        <td>{s.condition === "NEW" ? <Badge tone="ok">New</Badge> : <Badge tone="warn">Used</Badge>}</td>
+                        <td className="sq-mono">{s.quantity}</td>
+                        <td className="sq-cell-desc">{s.storageLocation || "—"}</td>
+                        <td className="sq-cell-desc">
+                          {stockTier === "SCRAP" ? <>{s.scrapReason || "—"}<div className="sq-mono sq-dim">{s.scrappedAt || "—"}</div></>
+                            : stockTier === "NOT_USABLE" ? <>{s.notUsableReason || "—"}<div className="sq-mono sq-dim">{s.movedToNotUsableAt || "—"}</div></>
+                            : <span className="sq-mono sq-dim">{s.registeredAt || "—"}</span>}
+                        </td>
+                        <td className="sq-ta-r">
+                          <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                            {stockTier !== "SCRAP" && <Btn size="sm" icon={PenLine} onClick={() => openUsage(s)}>Log usage</Btn>}
+                            {stockTier === "USABLE" && <Btn size="sm" icon={ShieldOff} onClick={() => openMove(s, "NOT_USABLE")}>Not usable</Btn>}
+                            {stockTier !== "SCRAP" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => openMove(s, "SCRAP")}>Scrap</Btn>}
+                            <Btn size="sm" icon={History} onClick={() => openHistory(s)}>History</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Section>
+        )}
+
         {view === "mydevices" && <MyDevicesPanel ds={ds} user={user} notify={notify} />}
 
         {view === "loaners" && (
@@ -907,6 +1040,127 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
             <Btn variant="danger" onClick={doScrap} disabled={scrapBusy}>{scrapBusy ? "Scrapping…" : "Scrap asset"}</Btn>
           </div>
         </div>
+      </Modal>
+
+      {/* Stock Registry — add item */}
+      <Modal open={addStockOpen} onClose={() => setAddStockOpen(false)} title="Add stock item" sub="Registers as usable — new or used quantity, ready to track">
+        <div className="sq-form">
+          <label className="sq-field"><span className="sq-label">Item name</span>
+            <input className="sq-input" value={stockName} onChange={(e) => setStockName(e.target.value)} placeholder="e.g. Standard Desktop, Toner Cartridge" />
+          </label>
+          <div className="sq-form-row">
+            <label className="sq-field"><span className="sq-label">Category</span>
+              <select className="sq-input" value={stockCategory} onChange={(e) => setStockCategory(e.target.value)}>
+                {STOCK_CATEGORIES.map((c) => <option key={c} value={c}>{STOCK_CATEGORY_LABEL[c]} {c === "OTHER" ? "(Non-asset)" : "(Asset)"}</option>)}
+              </select>
+            </label>
+            <label className="sq-field"><span className="sq-label">Condition</span>
+              <select className="sq-input" value={stockCondition} onChange={(e) => setStockCondition(e.target.value)}>
+                {STOCK_CONDITIONS.map((c) => <option key={c} value={c}>{c === "NEW" ? "New" : "Used"}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="sq-form-row">
+            <label className="sq-field"><span className="sq-label">Quantity</span>
+              <input className="sq-input" type="number" min="1" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} />
+            </label>
+            <label className="sq-field"><span className="sq-label">Storage location</span>
+              <select className="sq-input" value={stockStorage} onChange={(e) => setStockStorage(e.target.value)}>
+                {STORAGE_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="sq-form-actions">
+            <Btn type="button" onClick={() => setAddStockOpen(false)}>Cancel</Btn>
+            <Btn variant="primary" onClick={doAddStock} disabled={addStockBusy}>{addStockBusy ? "Adding…" : "Add to registry"}</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Stock Registry — move usable/not-usable stock down a tier */}
+      <Modal open={!!moveTarget} onClose={() => setMoveTarget(null)}
+        title={moveTarget ? `Move to ${moveTarget.toState === "SCRAP" ? "Scrap" : "Not usable"}?` : ""}
+        sub={moveTarget ? `${moveTarget.item.name} · ${moveTarget.item.quantity} on hand` : ""}>
+        {moveTarget && (
+          <div className="sq-form">
+            <label className="sq-field"><span className="sq-label">Reason</span>
+              <textarea className="sq-input" rows={3} value={moveReason} onChange={(e) => setMoveReason(e.target.value)}
+                placeholder={moveTarget.toState === "SCRAP" ? "Why is this being scrapped?" : "Why is this no longer usable?"} />
+            </label>
+            <label className="sq-field"><span className="sq-label">Quantity to move (of {moveTarget.item.quantity})</span>
+              <input className="sq-input" type="number" min="1" max={moveTarget.item.quantity} value={moveQuantity} onChange={(e) => setMoveQuantity(e.target.value)} />
+            </label>
+            <div className="sq-cell-desc">The scrap/not-usable date is recorded automatically.</div>
+            <div className="sq-form-actions">
+              <Btn type="button" onClick={() => setMoveTarget(null)}>Cancel</Btn>
+              <Btn variant="danger" onClick={doMove} disabled={moveBusy}>{moveBusy ? "Moving…" : "Confirm move"}</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Stock Registry — log a usage/portion event, read-only trail */}
+      <Modal open={!!usageTarget} onClose={() => setUsageTarget(null)} title="Log usage" sub={usageTarget ? usageTarget.name : ""}>
+        {usageTarget && (
+          <div className="sq-form">
+            <label className="sq-field"><span className="sq-label">Used by (employee)</span>
+              <select className="sq-input" value={usageUserId} onChange={(e) => setUsageUserId(e.target.value)}>
+                <option value="">— pick an employee, or type a name below —</option>
+                {ds.users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.department || "—"})</option>)}
+              </select>
+            </label>
+            {!usageUserId && (
+              <label className="sq-field"><span className="sq-label">Or name (not in the system)</span>
+                <input className="sq-input" value={usageName} onChange={(e) => setUsageName(e.target.value)} placeholder="Full name" />
+              </label>
+            )}
+            <div className="sq-form-row">
+              <label className="sq-field"><span className="sq-label">Amount / portion used</span>
+                <input className="sq-input" value={usageAmount} onChange={(e) => setUsageAmount(e.target.value)} placeholder="e.g. 2 units, 30%, 1.5m" />
+              </label>
+              <label className="sq-field"><span className="sq-label">Days used</span>
+                <input className="sq-input" type="number" min="0" value={usageDays} onChange={(e) => setUsageDays(e.target.value)} />
+              </label>
+            </div>
+            <label className="sq-field"><span className="sq-label">Note (optional)</span>
+              <textarea className="sq-input" rows={2} value={usageNote} onChange={(e) => setUsageNote(e.target.value)} />
+            </label>
+            <div className="sq-form-actions">
+              <Btn type="button" onClick={() => setUsageTarget(null)}>Cancel</Btn>
+              <Btn variant="primary" onClick={doLogUsage} disabled={usageBusy}>{usageBusy ? "Logging…" : "Log usage"}</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Stock Registry — full history trail (state changes + usage log) */}
+      <Modal open={!!historyTarget} onClose={() => setHistoryTarget(null)} title="History" sub={historyTarget ? historyTarget.name : ""}>
+        {historyLoading ? <div className="sq-cell-desc">Loading…</div>
+          : historyEntries.length === 0 ? <Empty icon={History} title="No history yet" hint="Actions on this item will show up here." />
+          : (
+            <div className="sq-stack">
+              {historyEntries.map((h) => (
+                <div key={h.id} className="sq-card" style={{ padding: 12 }}>
+                  <div className="sq-warranty-actions" style={{ justifyContent: "space-between" }}>
+                    <span className="sq-cell-strong">
+                      {h.action === "REGISTERED" ? "Registered" : h.action === "MOVED_TO_NOT_USABLE" ? "Moved to Not usable"
+                        : h.action === "MOVED_TO_SCRAP" ? "Moved to Scrap" : h.action === "QUANTITY_SPLIT" ? "Quantity split"
+                        : h.action === "USAGE_LOGGED" ? "Usage logged" : h.action}
+                    </span>
+                    <span className="sq-mono sq-dim">{h.at ? new Date(h.at).toLocaleString() : "—"}</span>
+                  </div>
+                  <div className="sq-cell-desc">
+                    {h.action === "USAGE_LOGGED"
+                      ? <>Used by {h.usedByName || (ds.users.find((u) => u.id === h.usedByUserId)?.name) || "—"}
+                          {h.amountUsed ? ` · ${h.amountUsed}` : ""}{h.daysUsed != null ? ` · ${h.daysUsed} day${h.daysUsed === 1 ? "" : "s"}` : ""}
+                          {h.reason ? <div>{h.reason}</div> : null}</>
+                      : <>{h.reason || "—"}{h.quantityMoved ? ` · ${h.quantityMoved} unit(s)` : ""}</>}
+                  </div>
+                  <div className="sq-mono sq-dim" style={{ marginTop: 4 }}>by {h.actorUsername}</div>
+                </div>
+              ))}
+            </div>
+          )}
       </Modal>
 
       <SignOutModal open={signOutOpen} onCancel={() => setSignOutOpen(false)} onConfirm={onSignOut} />
