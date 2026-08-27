@@ -27,7 +27,7 @@ import java.util.Set;
 @Service
 public class AssetService {
 
-    public static final String DEFAULT_STOCK_STORAGE = "IT Backup Support";
+    public static final String DEFAULT_STOCK_STORAGE = "F11 Storage";
 
     @Autowired
     private AssetRepository assetRepository;

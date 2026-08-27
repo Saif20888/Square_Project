@@ -3,7 +3,7 @@ import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Chec
 import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS, categoryFromDeviceKind, stockAssetCategory } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
-import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
+import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend, ActionMenu } from "../components/primitives";
 import { AccountPanel, SignOutModal } from "../components/Account";
 import { MyDevicesPanel } from "../components/MyDevices";
 
@@ -718,12 +718,12 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                             : <span className="sq-mono sq-dim">{s.purchaseDate || "—"}</span>}
                         </td>
                         <td className="sq-ta-r">
-                          <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                            {stockTier !== "SCRAP" && <Btn size="sm" icon={PenLine} onClick={() => openUsage(s)}>Log usage</Btn>}
-                            {stockTier === "USABLE" && s.stockCondition !== "NEW" && <Btn size="sm" icon={ShieldOff} onClick={() => openMove(s, "NOT_USABLE")}>Not usable</Btn>}
-                            {stockTier !== "SCRAP" && s.stockCondition !== "NEW" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => openMove(s, "SCRAP")}>Scrap</Btn>}
-                            <Btn size="sm" icon={History} onClick={() => openHistory(s)}>History</Btn>
-                          </div>
+                          <ActionMenu label={`Actions for ${s.deviceType}`} items={[
+                            stockTier !== "SCRAP" && { label: "Log usage", icon: PenLine, onClick: () => openUsage(s) },
+                            stockTier === "USABLE" && s.stockCondition !== "NEW" && { label: "Not usable", icon: ShieldOff, onClick: () => openMove(s, "NOT_USABLE") },
+                            stockTier !== "SCRAP" && s.stockCondition !== "NEW" && { label: "Scrap", icon: Trash2, danger: true, onClick: () => openMove(s, "SCRAP") },
+                            { label: "History", icon: History, onClick: () => openHistory(s) },
+                          ]} />
                         </td>
                       </tr>
                     ))}

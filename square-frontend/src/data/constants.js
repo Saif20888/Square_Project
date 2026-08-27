@@ -359,7 +359,7 @@ export const SEED_ASSETS = [
 const SK = (over) => {
   const merged = {
     id: ++_aid, deviceType: "", category: "OTHER", stockCondition: "NEW", quantity: 1, stockState: "USABLE",
-    serialNumber: null, status: null, storageLocation: STOCK_DEFAULT_STORAGE, purchaseDate: dateDaysAgo(30),
+    serialNumber: null, status: null, storageLocation: STOCK_STORAGE_LOCATIONS[_aid % STOCK_STORAGE_LOCATIONS.length], purchaseDate: dateDaysAgo(30),
     userId: null, originalValue: 0, usefulLifeYears: 4, isLoaner: false,
     notUsableReason: null, movedToNotUsableAt: null, scrapReason: null, scrappedAt: null, ...over,
   };

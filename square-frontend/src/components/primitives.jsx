@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useId } from "react";
 import { createPortal } from "react-dom";
-import { Check, X, Copy, Inbox, CheckCircle2, AlertCircle, Activity } from "lucide-react";
+import { Check, X, Copy, Inbox, CheckCircle2, AlertCircle, Activity, MoreVertical } from "lucide-react";
 import { STATUS_META, LIFECYCLE, STEP_LABEL } from "../data/constants";
 
 /* ================================================================================= */
@@ -35,6 +35,37 @@ export function Btn({ children, variant = "ghost", size, icon: Icon, ...props })
       {Icon && <Icon size={size === "sm" ? 14 : 16} strokeWidth={2.2} />}
       {children}
     </button>
+  );
+}
+
+// Row actions collapsed behind a kebab button — used wherever a table row would
+// otherwise need 3+ inline buttons. `items` is [{ label, icon, onClick, danger }] —
+// falsy entries are skipped, so callers can inline conditionals directly.
+export function ActionMenu({ items, label = "Actions" }) {
+  const [open, setOpen] = useState(false);
+  const visible = (items || []).filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <div className="sq-action-menu-wrap">
+      <button type="button" className={`sq-icon-btn${open ? " is-open" : ""}`} aria-label={label}
+        aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <>
+          <div className="sq-action-menu-scrim" onClick={() => setOpen(false)} />
+          <div className="sq-action-menu-pop" role="menu">
+            {visible.map((it, i) => (
+              <button key={i} type="button" role="menuitem" className={`sq-action-menu-item${it.danger ? " danger" : ""}`}
+                onClick={() => { setOpen(false); it.onClick(); }}>
+                {it.icon && <it.icon size={14} strokeWidth={2.2} />}
+                <span>{it.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
