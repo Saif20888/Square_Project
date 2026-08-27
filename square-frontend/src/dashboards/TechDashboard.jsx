@@ -651,57 +651,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 ))}
               </div>
             )}
-            {/* Device explorer — search every device, filter by availability or usage */}
-            <div className="sq-card" style={{ marginTop: 16 }}>
-              <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12 }}>
-                <div className="sq-search sq-search-sm">
-                  <Search size={14} />
-                  <input className="sq-input sq-search-input" placeholder="Search all devices…" value={devSearch} onChange={(e) => setDevSearch(e.target.value)} />
-                </div>
-                <div className="sq-segment">
-                  <button className={devFilter === "ALL" ? "is-on" : ""} onClick={() => setDevFilter("ALL")}>All</button>
-                  <button className={devFilter === "AVAILABLE" ? "is-on" : ""} onClick={() => setDevFilter("AVAILABLE")}>Available devices</button>
-                  <button className={devFilter === "IN_USE" ? "is-on" : ""} onClick={() => setDevFilter("IN_USE")}>Devices in use</button>
-                </div>
-                {devFilter === "AVAILABLE" && (
-                  <select className="sq-input" style={{ width: "auto" }} value={availCond} onChange={(e) => setAvailCond(e.target.value)}>
-                    <option value="ALL">All conditions</option>
-                    <option value="New">New device</option>
-                    <option value="Used">Used device</option>
-                    <option value="Repaired">Repaired device</option>
-                  </select>
-                )}
-                {devFilter === "IN_USE" && (
-                  <select className="sq-input" style={{ width: "auto" }} value={useDept} onChange={(e) => setUseDept(e.target.value)}>
-                    <option value="ALL">All departments</option>
-                    {ds.departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                )}
-              </div>
-              {explorerRows.length === 0 ? <Empty icon={Boxes} title="No matching devices" hint="Try a different search or filter." /> : (
-                <table className="sq-table">
-                  <thead><tr><th>Serial</th><th>Device</th><th>Status</th><th>Stored at</th><th>Value</th><th className="sq-ta-r">Action</th></tr></thead>
-                  <tbody>
-                    {explorerRows.map((r) => (
-                      <tr key={r.id}>
-                        <td className="sq-mono">{r.serialNumber}</td>
-                        <td className="sq-cell-strong">{r.deviceType}</td>
-                        <td>
-                          {r.status === "AVAILABLE_IN_POOL"
-                            ? <Badge tone={r.cond === "New" ? "ok" : r.cond === "Repaired" ? "info" : "neutral"}>Unassigned · {r.cond}</Badge>
-                            : <span>{r.isLoaner ? <Badge tone="brand">Loaner</Badge> : <Badge tone="warn">In use</Badge>} <span className="sq-cell-desc" style={{ display: "inline", marginLeft: 6 }}>{r.holder ? `${r.holder.name} (${r.holder.department || "—"})` : "Unknown holder"}</span></span>}
-                        </td>
-                        <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
-                        <td className="sq-mono">{money(r.originalValue)}</td>
-                        <td className="sq-ta-r">{r.status === "AVAILABLE_IN_POOL" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* General IT stock — bulk items (asset & non-asset, tracked by quantity), same tab as the serialized device explorer above */}
+            {/* General IT stock — bulk items (asset & non-asset, tracked by quantity). Leads the page: the device explorer below is a long per-serial table and would otherwise bury this. */}
             <div className="sq-card" style={{ marginTop: 16 }}>
               {stockTier === "USABLE" && (
                 <div className="sq-grid cols-3" style={{ marginBottom: 16 }}>
@@ -763,6 +713,56 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                             <Btn size="sm" icon={History} onClick={() => openHistory(s)}>History</Btn>
                           </div>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Device explorer — search every serialized device, filter by availability or usage */}
+            <div className="sq-card" style={{ marginTop: 16 }}>
+              <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12 }}>
+                <div className="sq-search sq-search-sm">
+                  <Search size={14} />
+                  <input className="sq-input sq-search-input" placeholder="Search all devices…" value={devSearch} onChange={(e) => setDevSearch(e.target.value)} />
+                </div>
+                <div className="sq-segment">
+                  <button className={devFilter === "ALL" ? "is-on" : ""} onClick={() => setDevFilter("ALL")}>All</button>
+                  <button className={devFilter === "AVAILABLE" ? "is-on" : ""} onClick={() => setDevFilter("AVAILABLE")}>Available devices</button>
+                  <button className={devFilter === "IN_USE" ? "is-on" : ""} onClick={() => setDevFilter("IN_USE")}>Devices in use</button>
+                </div>
+                {devFilter === "AVAILABLE" && (
+                  <select className="sq-input" style={{ width: "auto" }} value={availCond} onChange={(e) => setAvailCond(e.target.value)}>
+                    <option value="ALL">All conditions</option>
+                    <option value="New">New device</option>
+                    <option value="Used">Used device</option>
+                    <option value="Repaired">Repaired device</option>
+                  </select>
+                )}
+                {devFilter === "IN_USE" && (
+                  <select className="sq-input" style={{ width: "auto" }} value={useDept} onChange={(e) => setUseDept(e.target.value)}>
+                    <option value="ALL">All departments</option>
+                    {ds.departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
+                )}
+              </div>
+              {explorerRows.length === 0 ? <Empty icon={Boxes} title="No matching devices" hint="Try a different search or filter." /> : (
+                <table className="sq-table">
+                  <thead><tr><th>Serial</th><th>Device</th><th>Status</th><th>Stored at</th><th>Value</th><th className="sq-ta-r">Action</th></tr></thead>
+                  <tbody>
+                    {explorerRows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="sq-mono">{r.serialNumber}</td>
+                        <td className="sq-cell-strong">{r.deviceType}</td>
+                        <td>
+                          {r.status === "AVAILABLE_IN_POOL"
+                            ? <Badge tone={r.cond === "New" ? "ok" : r.cond === "Repaired" ? "info" : "neutral"}>Unassigned · {r.cond}</Badge>
+                            : <span>{r.isLoaner ? <Badge tone="brand">Loaner</Badge> : <Badge tone="warn">In use</Badge>} <span className="sq-cell-desc" style={{ display: "inline", marginLeft: 6 }}>{r.holder ? `${r.holder.name} (${r.holder.department || "—"})` : "Unknown holder"}</span></span>}
+                        </td>
+                        <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
+                        <td className="sq-mono">{money(r.originalValue)}</td>
+                        <td className="sq-ta-r">{r.status === "AVAILABLE_IN_POOL" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>}</td>
                       </tr>
                     ))}
                   </tbody>
