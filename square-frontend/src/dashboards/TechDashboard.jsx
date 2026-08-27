@@ -736,11 +736,9 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
                         <td className="sq-cell-desc"><span className="sq-mono sq-dim">{r.purchaseDate || "—"}</span></td>
                         <td className="sq-ta-r">
-                          {r.cond !== "New" && (
-                            <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                              <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>
-                            </div>
-                          )}
+                          <ActionMenu label={`Actions for ${r.deviceType}`} items={[
+                            r.cond !== "New" && { label: "Scrap", icon: Trash2, danger: true, onClick: () => { setScrapTarget(r); setScrapReason(""); } },
+                          ]} />
                         </td>
                       </tr>
                     ))}
