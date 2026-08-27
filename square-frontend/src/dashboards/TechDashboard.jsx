@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight, Archive, History, PenLine } from "lucide-react";
+import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight, Archive, History, PenLine, Monitor } from "lucide-react";
 import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS, categoryFromDeviceKind, stockAssetCategory } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
@@ -200,6 +200,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     { key: "ledger", label: "Ledger", icon: ClipboardList },
     { key: "records", label: "Monthly records", icon: CalendarDays },
     { key: "pool", label: "IT support stock", icon: Boxes, badge: pending.length || null },
+    { key: "inuse", label: "Devices in use", icon: Monitor },
     { key: "loaners", label: "Employee assign pool", icon: FileText, badge: loaners.length || null },
     { key: "mydevices", label: "My devices", icon: HardDrive },
     { key: "account", label: "My Account", icon: UserRound },
@@ -757,9 +758,11 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </table>
               )}
             </div>
+          </Section>
+        )}
 
-            {/* Device explorer — devices currently in use. Unassigned pool devices
-                live in the Usable stock tier above instead. */}
+        {view === "inuse" && (
+          <Section eyebrow="Devices currently issued to employees or out on loan" title="Devices in use">
             <div className="sq-card" style={{ marginTop: 16 }}>
               <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12 }}>
                 <div className="sq-search sq-search-sm">
