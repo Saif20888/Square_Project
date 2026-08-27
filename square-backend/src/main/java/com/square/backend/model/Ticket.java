@@ -28,6 +28,9 @@ public class Ticket {
     private LocalDateTime createdAt = LocalDateTime.now();
     private LocalDateTime resolvedAt;
 
+    // Tenant scaffold for a future SaaS split — unused today, not enforced.
+    private Long organizationId;
+
     // Getters and Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -53,4 +56,6 @@ public class Ticket {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getResolvedAt() { return resolvedAt; }
     public void setResolvedAt(LocalDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
+    public Long getOrganizationId() { return organizationId; }
+    public void setOrganizationId(Long organizationId) { this.organizationId = organizationId; }
 }

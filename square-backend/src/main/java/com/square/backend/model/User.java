@@ -52,6 +52,9 @@ public class User {
     // Username of this user's supervisor; null for supervisors/admins/techs.
     private String managerUsername;
 
+    // Tenant scaffold for a future SaaS split — unused today, not enforced.
+    private Long organizationId;
+
     // 1.(Strictly required by JPA/Hibernate specs)
     public User() {
     }
@@ -102,4 +105,6 @@ public class User {
     public void setFloor(Integer floor) { this.floor = floor; }
     public String getManagerUsername() { return managerUsername; }
     public void setManagerUsername(String managerUsername) { this.managerUsername = managerUsername; }
+    public Long getOrganizationId() { return organizationId; }
+    public void setOrganizationId(Long organizationId) { this.organizationId = organizationId; }
 }

@@ -94,6 +94,9 @@ public class Asset {
 
     private String notUsableReason;
     private LocalDate movedToNotUsableAt;
+
+    // Tenant scaffold for a future SaaS split — unused today, not enforced.
+    private Long organizationId;
 }
 
 
