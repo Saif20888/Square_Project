@@ -132,7 +132,10 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const repairs = useMemo(() => repairLog(ds.assets, ds.users), [ds.assets, ds.users]);
   const pending = useMemo(() => pendingAssignments(ds.assets, ds.users), [ds.assets, ds.users]);
-  const scrapped = useMemo(() => scrapRegistry(ds.assets), [ds.assets]);
+  // Shown as rows in the Scrap tier table (IT support stock) alongside scrapped
+  // bulk stock — there's no separate Scrap tab any more.
+  const scrapped = useMemo(() => scrapRegistry(ds.assets)
+    .map((a) => ({ ...a, category: a.category || categoryFromDeviceKind(a.deviceKind, a.deviceType) })), [ds.assets]);
   const techNames = ds.users.filter((u) => u.role === "IT_TECH").map((u) => u.name);
   // Device notifications only — password-reset requests belong to the Superuser
   const notifs = (ds.notifications || []).filter((n) => n.type !== "PASSWORD_RESET").map((n) => {
@@ -176,8 +179,8 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const stockCounts = useMemo(() => ({
     USABLE: stockItems.filter((s) => s.stockState === "USABLE").length + availablePoolRows.length,
     NOT_USABLE: stockItems.filter((s) => s.stockState === "NOT_USABLE").length,
-    SCRAP: stockItems.filter((s) => s.stockState === "SCRAP").length,
-  }), [stockItems, availablePoolRows]);
+    SCRAP: stockItems.filter((s) => s.stockState === "SCRAP").length + scrapped.length,
+  }), [stockItems, availablePoolRows, scrapped]);
   const stockRows = useMemo(() => stockItems.filter((s) => s.stockState === stockTier), [stockItems, stockTier]);
   // New/Repaired/Used cards fold in usable bulk stock too (by quantity, not row
   // count) — bulk stock has no "repaired" condition, so it only adds to New/Used.
@@ -199,7 +202,6 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     { key: "pool", label: "IT support stock", icon: Boxes, badge: pending.length || null },
     { key: "loaners", label: "Employee assign pool", icon: FileText, badge: loaners.length || null },
     { key: "mydevices", label: "My devices", icon: HardDrive },
-    { key: "scrap", label: "Scrap", icon: Trash2 },
     { key: "account", label: "My Account", icon: UserRound },
     { key: "signout", label: "Sign Out", icon: LogOut },
   ];
@@ -688,7 +690,9 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </div>
                 <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
               </div>
-              {stockRows.length === 0 && (stockTier !== "USABLE" || availablePoolRows.length === 0) ? (
+              {stockRows.length === 0
+                && (stockTier !== "USABLE" || availablePoolRows.length === 0)
+                && (stockTier !== "SCRAP" || scrapped.length === 0) ? (
                 <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
                   hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
               ) : (
@@ -736,6 +740,17 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                             <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>
                           </div>
                         </td>
+                      </tr>
+                    ))}
+                    {stockTier === "SCRAP" && scrapped.map((a) => (
+                      <tr key={`dev-${a.id}`}>
+                        <td className="sq-cell-strong">{a.deviceType}<div className="sq-mono sq-dim">{a.serialNumber}</div></td>
+                        <td><Badge tone={stockAssetCategory(a.category) === "ASSET" ? "brand" : "neutral"}>{STOCK_CATEGORY_LABEL[a.category] || a.category}</Badge></td>
+                        <td className="sq-mono sq-dim">—</td>
+                        <td className="sq-mono">1</td>
+                        <td className="sq-cell-desc">{a.storageLocation || "—"}</td>
+                        <td className="sq-cell-desc">{a.scrapReason || "—"}<div className="sq-mono sq-dim">{a.scrappedAt || "—"}</div></td>
+                        <td className="sq-ta-r" />
                       </tr>
                     ))}
                   </tbody>
@@ -794,29 +809,6 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         <td>{a.holderName}</td>
                         <td className="sq-mono">{a.daysOut} day{a.daysOut === 1 ? "" : "s"}</td>
                         <td className="sq-ta-r"><Btn size="sm" icon={PackageCheck} onClick={() => setLoanerReturn(a)}>Mark returned</Btn></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </Section>
-        )}
-
-        {view === "scrap" && (
-          <Section eyebrow="Decommissioned" title="Scrap">
-            <div className="sq-card sq-table-card">
-              {scrapped.length === 0 ? <Empty icon={Trash2} title="Nothing scrapped" hint="Devices that can't be repaired end up here." /> : (
-                <table className="sq-table">
-                  <thead><tr><th>Serial</th><th>Device</th><th>Value</th><th>Reason</th><th>Scrapped</th></tr></thead>
-                  <tbody>
-                    {scrapped.map((a) => (
-                      <tr key={a.id}>
-                        <td className="sq-mono">{a.serialNumber}</td>
-                        <td className="sq-cell-strong">{a.deviceType}</td>
-                        <td className="sq-mono">{money(a.originalValue)}</td>
-                        <td className="sq-cell-desc">{a.scrapReason || "—"}</td>
-                        <td className="sq-mono sq-dim">{a.scrappedAt || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
