@@ -1,9 +1,22 @@
 import { useState, useRef, useCallback } from "react";
-import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, SEED_STOCK, SEED_ASSET_HISTORY, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty, STOCK_DEFAULT_STORAGE, stockAssetCategory, categoryFromDeviceKind } from "./constants";
+import { API_BASE, DEMO_FALLBACK_ENABLED, SEED_USERS, SEED_TICKETS, SEED_ASSETS, SEED_STOCK, SEED_ASSET_HISTORY, DEFAULT_LOCATIONS, DEFAULT_DEPARTMENTS, dateDaysAgo, withFreshWarranty, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS, stockAssetCategory, categoryFromDeviceKind } from "./constants";
 
 // Bulk stock lives in the same assets table/list as serialized devices — the
 // seed data ships as two arrays for readability, joined here into one.
-const SEED_ASSETS_ALL = [...SEED_ASSETS, ...SEED_STOCK];
+// SEED_ASSETS predates the category field, and unassigned pool devices never
+// got a storage bay — backfill both here instead of touching every seed row.
+const SEED_ASSETS_ALL = [
+  ...SEED_ASSETS.map((a, i) => {
+    const category = a.category ?? categoryFromDeviceKind(a.deviceKind, a.deviceType);
+    return {
+      ...a,
+      category,
+      stockClass: a.stockClass ?? stockAssetCategory(category),
+      storageLocation: a.storageLocation ?? (a.status === "AVAILABLE_IN_POOL" ? STOCK_STORAGE_LOCATIONS[i % STOCK_STORAGE_LOCATIONS.length] : a.storageLocation),
+    };
+  }),
+  ...SEED_STOCK,
+];
 
 /* ================================================================================= */
 /*  Data layer — network with graceful demo fallback                                 */

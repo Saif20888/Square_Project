@@ -41,6 +41,9 @@ public class BackendApplication {
     // Only the fixed SQUARE designation ladder exists (Executive Director … Office Assistant)
     private static final String[] GEN_TITLES = { "Executive", "Officer", "Senior Executive", "Assistant Officer", "Deputy Manager", "Assistant Manager", "Office Assistant", "Executive", "Officer", "Senior Executive" };
     private static final String[] LOCATIONS = { "Anita Center (HQ)", "Sector 3 Office", "CSQ", "Bay Tower" };
+    // The 3 bays inside the "IT Backup Support" storage room — mirrors the frontend's
+    // STOCK_STORAGE_LOCATIONS, used only to give demo pool devices a non-blank "Stored at".
+    private static final String[] STOCK_STORAGE_LOCATIONS = { "F11 Storage", "B2 Storage", "S3 Storage" };
 
     // Fillers so every department holds its full designation ladder — each unique
     // designation exactly once, each common one at least once (mirrors the frontend seed).
@@ -447,6 +450,15 @@ public class BackendApplication {
                             .warrantyExpiry(LocalDate.now().plusDays(cond == AssetCondition.NEW ? 720 : 60))
                             .originalValue(genValues[type]).usefulLifeYears(4).build());
                 }
+
+                // Demo data only — spread unassigned pool devices across the 3 storage
+                // bays instead of leaving "Stored at" blank.
+                List<Asset> unassignedPool = assetRepo.findByStatus(AssetStatus.AVAILABLE_IN_POOL);
+                for (int i = 0; i < unassignedPool.size(); i++) {
+                    Asset a = unassignedPool.get(i);
+                    a.setStorageLocation(STOCK_STORAGE_LOCATIONS[i % STOCK_STORAGE_LOCATIONS.length]);
+                }
+                assetRepo.saveAll(unassignedPool);
 
                 System.out.println("Seeded asset pool into PostgreSQL (" + assetRepo.count() + " assets).");
                 // Printed once, when an empty database is seeded. The password is

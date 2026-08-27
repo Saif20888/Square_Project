@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight, Archive, History, PenLine } from "lucide-react";
-import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS } from "../data/constants";
+import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS, categoryFromDeviceKind, stockAssetCategory } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
 import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
@@ -56,10 +56,9 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   // Monthly records: which month to show / print
   const [recordMonth, setRecordMonth] = useState("");
 
-  // IT support stock: device explorer (search + availability / in-use filters)
+  // IT support stock: device explorer (search + department filter, in-use devices only —
+  // unassigned pool devices show as rows in the Usable stock tier instead)
   const [devSearch, setDevSearch] = useState("");
-  const [devFilter, setDevFilter] = useState("ALL"); // ALL | AVAILABLE | IN_USE
-  const [availCond, setAvailCond] = useState("ALL"); // ALL | New | Used | Repaired
   const [useDept, setUseDept] = useState("ALL");
 
   // Stock Registry: general IT stock (asset & non-asset, tracked by quantity)
@@ -145,25 +144,14 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   const activeMonth = recordMonth || records.months[0] || "";
   const monthRows = records.rows[activeMonth] || [];
 
-  // The device explorer inside IT support stock
+  // The device explorer inside IT support stock — devices currently in use.
+  // Unassigned pool devices no longer show here; they're rows in the Usable
+  // stock tier below instead.
   const explorerRows = ds.assets
-    .filter((a) => a.status === "AVAILABLE_IN_POOL" || a.status === "ALLOCATED_IN_USE")
-    .map((a) => {
-      const holder = a.userId != null ? ds.users.find((u) => u.id === a.userId) : null;
-      const cond = a.status === "AVAILABLE_IN_POOL"
-        ? (a.poolCondition === "NEW" ? "New" : a.poolCondition === "REPAIRED" ? "Repaired" : "Used")
-        : null;
-      return { ...a, holder, cond };
-    })
+    .filter((a) => a.status === "ALLOCATED_IN_USE")
+    .map((a) => ({ ...a, holder: a.userId != null ? ds.users.find((u) => u.id === a.userId) : null }))
     .filter((r) => {
-      if (devFilter === "AVAILABLE") {
-        if (r.status !== "AVAILABLE_IN_POOL") return false;
-        if (availCond !== "ALL" && r.cond !== availCond) return false;
-      }
-      if (devFilter === "IN_USE") {
-        if (r.status !== "ALLOCATED_IN_USE") return false;
-        if (useDept !== "ALL" && (r.holder?.department || r.department) !== useDept) return false;
-      }
+      if (useDept !== "ALL" && (r.holder?.department || r.department) !== useDept) return false;
       const q = devSearch.trim().toLowerCase();
       if (!q) return true;
       return r.serialNumber.toLowerCase().includes(q)
@@ -174,11 +162,22 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
   // General IT stock — bulk items living in the same assets list as serialized
   // devices (no serial number), grouped by usability tier.
   const stockItems = useMemo(() => ds.assets.filter((a) => a.serialNumber == null), [ds.assets]);
+  // Unassigned serialized devices (new/repaired/used, sitting in the pool waiting
+  // for Superuser acceptance) count as usable stock too — shown as extra rows in
+  // the Usable tier table alongside bulk items, not in a separate explorer filter.
+  const availablePoolRows = useMemo(() => ds.assets
+    .filter((a) => a.status === "AVAILABLE_IN_POOL")
+    .map((a) => ({
+      ...a,
+      cond: a.poolCondition === "NEW" ? "New" : a.poolCondition === "REPAIRED" ? "Repaired" : "Used",
+      condTone: a.poolCondition === "NEW" ? "ok" : a.poolCondition === "REPAIRED" ? "info" : "warn",
+      category: a.category || categoryFromDeviceKind(a.deviceKind, a.deviceType),
+    })), [ds.assets]);
   const stockCounts = useMemo(() => ({
-    USABLE: stockItems.filter((s) => s.stockState === "USABLE").length,
+    USABLE: stockItems.filter((s) => s.stockState === "USABLE").length + availablePoolRows.length,
     NOT_USABLE: stockItems.filter((s) => s.stockState === "NOT_USABLE").length,
     SCRAP: stockItems.filter((s) => s.stockState === "SCRAP").length,
-  }), [stockItems]);
+  }), [stockItems, availablePoolRows]);
   const stockRows = useMemo(() => stockItems.filter((s) => s.stockState === stockTier), [stockItems, stockTier]);
 
   const items = [
@@ -680,7 +679,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </div>
                 <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
               </div>
-              {stockRows.length === 0 ? (
+              {stockRows.length === 0 && (stockTier !== "USABLE" || availablePoolRows.length === 0) ? (
                 <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
                   hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
               ) : (
@@ -715,54 +714,52 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         </td>
                       </tr>
                     ))}
+                    {stockTier === "USABLE" && availablePoolRows.map((r) => (
+                      <tr key={`dev-${r.id}`}>
+                        <td className="sq-cell-strong">{r.deviceType}<div className="sq-mono sq-dim">{r.serialNumber}</div></td>
+                        <td><Badge tone={stockAssetCategory(r.category) === "ASSET" ? "brand" : "neutral"}>{STOCK_CATEGORY_LABEL[r.category] || r.category}</Badge></td>
+                        <td><Badge tone={r.condTone}>{r.cond}</Badge></td>
+                        <td className="sq-mono">1</td>
+                        <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
+                        <td className="sq-cell-desc"><span className="sq-mono sq-dim">{r.purchaseDate || "—"}</span></td>
+                        <td className="sq-ta-r">
+                          <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                            <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
             </div>
 
-            {/* Device explorer — search every serialized device, filter by availability or usage */}
+            {/* Device explorer — devices currently in use. Unassigned pool devices
+                live in the Usable stock tier above instead. */}
             <div className="sq-card" style={{ marginTop: 16 }}>
               <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12 }}>
                 <div className="sq-search sq-search-sm">
                   <Search size={14} />
-                  <input className="sq-input sq-search-input" placeholder="Search all devices…" value={devSearch} onChange={(e) => setDevSearch(e.target.value)} />
+                  <input className="sq-input sq-search-input" placeholder="Search devices in use…" value={devSearch} onChange={(e) => setDevSearch(e.target.value)} />
                 </div>
-                <div className="sq-segment">
-                  <button className={devFilter === "ALL" ? "is-on" : ""} onClick={() => setDevFilter("ALL")}>All</button>
-                  <button className={devFilter === "AVAILABLE" ? "is-on" : ""} onClick={() => setDevFilter("AVAILABLE")}>Available devices</button>
-                  <button className={devFilter === "IN_USE" ? "is-on" : ""} onClick={() => setDevFilter("IN_USE")}>Devices in use</button>
-                </div>
-                {devFilter === "AVAILABLE" && (
-                  <select className="sq-input" style={{ width: "auto" }} value={availCond} onChange={(e) => setAvailCond(e.target.value)}>
-                    <option value="ALL">All conditions</option>
-                    <option value="New">New device</option>
-                    <option value="Used">Used device</option>
-                    <option value="Repaired">Repaired device</option>
-                  </select>
-                )}
-                {devFilter === "IN_USE" && (
-                  <select className="sq-input" style={{ width: "auto" }} value={useDept} onChange={(e) => setUseDept(e.target.value)}>
-                    <option value="ALL">All departments</option>
-                    {ds.departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                )}
+                <select className="sq-input" style={{ width: "auto" }} value={useDept} onChange={(e) => setUseDept(e.target.value)}>
+                  <option value="ALL">All departments</option>
+                  {ds.departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                </select>
               </div>
               {explorerRows.length === 0 ? <Empty icon={Boxes} title="No matching devices" hint="Try a different search or filter." /> : (
                 <table className="sq-table">
-                  <thead><tr><th>Serial</th><th>Device</th><th>Status</th><th>Stored at</th><th>Value</th><th className="sq-ta-r">Action</th></tr></thead>
+                  <thead><tr><th>Serial</th><th>Device</th><th>Status</th><th>Stored at</th><th>Value</th></tr></thead>
                   <tbody>
                     {explorerRows.map((r) => (
                       <tr key={r.id}>
                         <td className="sq-mono">{r.serialNumber}</td>
                         <td className="sq-cell-strong">{r.deviceType}</td>
                         <td>
-                          {r.status === "AVAILABLE_IN_POOL"
-                            ? <Badge tone={r.cond === "New" ? "ok" : r.cond === "Repaired" ? "info" : "neutral"}>Unassigned · {r.cond}</Badge>
-                            : <span>{r.isLoaner ? <Badge tone="brand">Loaner</Badge> : <Badge tone="warn">In use</Badge>} <span className="sq-cell-desc" style={{ display: "inline", marginLeft: 6 }}>{r.holder ? `${r.holder.name} (${r.holder.department || "—"})` : "Unknown holder"}</span></span>}
+                          {r.isLoaner ? <Badge tone="brand">Loaner</Badge> : <Badge tone="warn">In use</Badge>} <span className="sq-cell-desc" style={{ display: "inline", marginLeft: 6 }}>{r.holder ? `${r.holder.name} (${r.holder.department || "—"})` : "Unknown holder"}</span>
                         </td>
                         <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
                         <td className="sq-mono">{money(r.originalValue)}</td>
-                        <td className="sq-ta-r">{r.status === "AVAILABLE_IN_POOL" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>}</td>
                       </tr>
                     ))}
                   </tbody>
