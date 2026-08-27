@@ -179,6 +179,15 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
     SCRAP: stockItems.filter((s) => s.stockState === "SCRAP").length,
   }), [stockItems, availablePoolRows]);
   const stockRows = useMemo(() => stockItems.filter((s) => s.stockState === stockTier), [stockItems, stockTier]);
+  // New/Repaired/Used cards fold in usable bulk stock too (by quantity, not row
+  // count) — bulk stock has no "repaired" condition, so it only adds to New/Used.
+  const combinedPool = useMemo(() => {
+    const usableBulk = stockItems.filter((s) => s.stockState === "USABLE");
+    const bulkQty = (cond) => usableBulk.filter((s) => s.stockCondition === cond).reduce((sum, s) => sum + (s.quantity || 0), 0);
+    const bulkNew = bulkQty("NEW");
+    const bulkUsed = bulkQty("USED");
+    return { NEW: pool.NEW + bulkNew, REPAIRED: pool.REPAIRED, USED: pool.USED + bulkUsed, total: pool.total + bulkNew + bulkUsed };
+  }, [pool, stockItems]);
 
   const items = [
     { key: "queue", label: "Home", icon: Home, badge: openQueue.length || null },
@@ -656,17 +665,17 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 <div className="sq-grid cols-3" style={{ marginBottom: 16 }}>
                   <div className="sq-card sq-pool">
                     <div className="sq-pool-head"><PackagePlus size={16} /> New devices</div>
-                    <Bar label="In stock" value={pool.NEW} max={pool.total || 1} sub={`${pool.NEW} of ${pool.total}`} tone="ok" />
+                    <Bar label="In stock" value={combinedPool.NEW} max={combinedPool.total || 1} sub={`${combinedPool.NEW} of ${combinedPool.total}`} tone="ok" />
                     <div className="sq-cell-desc">Brand-new inventory — issued only with Superuser acceptance.</div>
                   </div>
                   <div className="sq-card sq-pool">
                     <div className="sq-pool-head"><Wrench size={16} /> Repaired devices</div>
-                    <Bar label="In stock" value={pool.REPAIRED} max={pool.total || 1} sub={`${pool.REPAIRED} of ${pool.total}`} tone="info" />
+                    <Bar label="In stock" value={combinedPool.REPAIRED} max={combinedPool.total || 1} sub={`${combinedPool.REPAIRED} of ${combinedPool.total}`} tone="info" />
                     <div className="sq-cell-desc">Returned and repaired units, ready to loan out.</div>
                   </div>
                   <div className="sq-card sq-pool">
                     <div className="sq-pool-head"><Boxes size={16} /> Used devices</div>
-                    <Bar label="In stock" value={pool.USED} max={pool.total || 1} sub={`${pool.USED} of ${pool.total}`} tone="warn" />
+                    <Bar label="In stock" value={combinedPool.USED} max={combinedPool.total || 1} sub={`${combinedPool.USED} of ${combinedPool.total}`} tone="warn" />
                     <div className="sq-cell-desc">Working stock returned from employees — used for short-term loans.</div>
                   </div>
                 </div>
