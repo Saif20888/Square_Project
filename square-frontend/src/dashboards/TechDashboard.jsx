@@ -720,8 +720,8 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         <td className="sq-ta-r">
                           <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                             {stockTier !== "SCRAP" && <Btn size="sm" icon={PenLine} onClick={() => openUsage(s)}>Log usage</Btn>}
-                            {stockTier === "USABLE" && <Btn size="sm" icon={ShieldOff} onClick={() => openMove(s, "NOT_USABLE")}>Not usable</Btn>}
-                            {stockTier !== "SCRAP" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => openMove(s, "SCRAP")}>Scrap</Btn>}
+                            {stockTier === "USABLE" && s.stockCondition !== "NEW" && <Btn size="sm" icon={ShieldOff} onClick={() => openMove(s, "NOT_USABLE")}>Not usable</Btn>}
+                            {stockTier !== "SCRAP" && s.stockCondition !== "NEW" && <Btn size="sm" variant="danger" icon={Trash2} onClick={() => openMove(s, "SCRAP")}>Scrap</Btn>}
                             <Btn size="sm" icon={History} onClick={() => openHistory(s)}>History</Btn>
                           </div>
                         </td>
@@ -736,9 +736,11 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                         <td className="sq-cell-desc">{r.storageLocation || "—"}</td>
                         <td className="sq-cell-desc"><span className="sq-mono sq-dim">{r.purchaseDate || "—"}</span></td>
                         <td className="sq-ta-r">
-                          <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                            <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>
-                          </div>
+                          {r.cond !== "New" && (
+                            <div className="sq-row-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                              <Btn size="sm" variant="danger" icon={Trash2} onClick={() => { setScrapTarget(r); setScrapReason(""); }}>Scrap</Btn>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

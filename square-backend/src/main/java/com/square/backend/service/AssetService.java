@@ -1,6 +1,7 @@
 package com.square.backend.service;
 
 import com.square.backend.model.Asset;
+import com.square.backend.model.AssetCondition;
 import com.square.backend.model.AssetHistoryEntry;
 import com.square.backend.model.AssetStatus;
 import com.square.backend.model.Notification;
@@ -76,6 +77,12 @@ public class AssetService {
     public Asset scrap(Long id, String reason) {
         Asset asset = find(id);
         requireStatus(asset, EnumSet.complementOf(EnumSet.of(AssetStatus.SCRAPPED)), "scrap");
+        // Brand-new pool stock hasn't had a chance to fail yet — only a repaired or
+        // used pool device can be scrapped. Doesn't apply to devices out in the
+        // field (no pool condition) — those get scrapped for real failures.
+        if (asset.getStatus() == AssetStatus.AVAILABLE_IN_POOL && asset.getPoolCondition() == AssetCondition.NEW) {
+            throw new ConflictException("Can't scrap a new pool device — only repaired or used devices can be scrapped.");
+        }
         asset.setStatus(AssetStatus.SCRAPPED);
         asset.setScrapReason(reason);
         asset.setScrappedAt(LocalDate.now());
@@ -283,6 +290,11 @@ public class AssetService {
                 || (item.getStockState() == StockState.NOT_USABLE && toState == StockState.SCRAP);
         if (!allowed) {
             throw new ConflictException("Can't move this item from " + item.getStockState() + " to " + toState + ".");
+        }
+        // Brand-new stock hasn't had a chance to fail yet — only used stock can be
+        // marked not usable or scrapped.
+        if (item.getStockCondition() == StockCondition.NEW) {
+            throw new ConflictException("Can't move new stock to " + toState + " — only used stock can be marked not usable or scrapped.");
         }
         if (reason == null || reason.trim().isEmpty()) {
             throw new BadRequestException("A reason is required.");
