@@ -703,14 +703,6 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
 
             {/* General IT stock — bulk items (asset & non-asset, tracked by quantity), same tab as the serialized device explorer above */}
             <div className="sq-card" style={{ marginTop: 16 }}>
-              <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between" }}>
-                <div className="sq-segment">
-                  <button className={stockTier === "USABLE" ? "is-on" : ""} onClick={() => setStockTier("USABLE")}>Usable ({stockCounts.USABLE})</button>
-                  <button className={stockTier === "NOT_USABLE" ? "is-on" : ""} onClick={() => setStockTier("NOT_USABLE")}>Not usable ({stockCounts.NOT_USABLE})</button>
-                  <button className={stockTier === "SCRAP" ? "is-on" : ""} onClick={() => setStockTier("SCRAP")}>Scrap ({stockCounts.SCRAP})</button>
-                </div>
-                <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
-              </div>
               {stockTier === "USABLE" && (
                 <div className="sq-grid cols-3" style={{ marginBottom: 16 }}>
                   <div className="sq-card sq-pool">
@@ -730,6 +722,14 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                   </div>
                 </div>
               )}
+              <div className="sq-warranty-actions" style={{ flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between" }}>
+                <div className="sq-segment">
+                  <button className={stockTier === "USABLE" ? "is-on" : ""} onClick={() => setStockTier("USABLE")}>Usable ({stockCounts.USABLE})</button>
+                  <button className={stockTier === "NOT_USABLE" ? "is-on" : ""} onClick={() => setStockTier("NOT_USABLE")}>Not usable ({stockCounts.NOT_USABLE})</button>
+                  <button className={stockTier === "SCRAP" ? "is-on" : ""} onClick={() => setStockTier("SCRAP")}>Scrap ({stockCounts.SCRAP})</button>
+                </div>
+                <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
+              </div>
               {stockRows.length === 0 ? (
                 <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
                   hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
