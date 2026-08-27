@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Inbox, Home, Wrench, ClipboardList, Boxes, FileText, UserCheck, X, Check, PackageCheck, PackagePlus, Hammer, Trash2, HelpCircle, ShieldCheck, ShieldOff, Send, Bell, CalendarDays, Download, UserRound, LogOut, Search, HardDrive, Clock, BarChart3, ChevronRight, Archive, History, PenLine } from "lucide-react";
-import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE } from "../data/constants";
+import { PROBLEM_ICON, money, REPAIR_SHOP_WARRANTY, REPAIR_SHOP_TRUSTED, STORAGE_LOCATIONS, STOCK_CATEGORIES, STOCK_CATEGORY_LABEL, STOCK_CONDITIONS, STOCK_DEFAULT_STORAGE, STOCK_STORAGE_LOCATIONS } from "../data/constants";
 import { poolSummary, loanerLedger, technicianLedger, repairLog, pendingAssignments, scrapRegistry, monthlyRecords, monthLabel } from "../data/derived";
 import { Shell, Section } from "../components/Shell";
 import { Empty, Btn, Modal, Bar, Badge, Donut, DonutLegend } from "../components/primitives";
@@ -636,23 +636,6 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
 
         {view === "pool" && (
           <Section eyebrow="Serialized devices & bulk stock — asset & non-asset, usable → not usable → scrap" title="IT support stock">
-            <div className="sq-grid cols-3">
-              <div className="sq-card sq-pool">
-                <div className="sq-pool-head"><PackagePlus size={16} /> New devices</div>
-                <Bar label="In stock" value={pool.NEW} max={pool.total || 1} sub={`${pool.NEW} of ${pool.total}`} tone="ok" />
-                <div className="sq-cell-desc">Brand-new inventory — issued only with Superuser acceptance.</div>
-              </div>
-              <div className="sq-card sq-pool">
-                <div className="sq-pool-head"><Wrench size={16} /> Repaired devices</div>
-                <Bar label="In stock" value={pool.REPAIRED} max={pool.total || 1} sub={`${pool.REPAIRED} of ${pool.total}`} tone="info" />
-                <div className="sq-cell-desc">Returned and repaired units, ready to loan out.</div>
-              </div>
-              <div className="sq-card sq-pool">
-                <div className="sq-pool-head"><Boxes size={16} /> Used devices</div>
-                <Bar label="In stock" value={pool.USED} max={pool.total || 1} sub={`${pool.USED} of ${pool.total}`} tone="warn" />
-                <div className="sq-cell-desc">Working stock returned from employees — used for short-term loans.</div>
-              </div>
-            </div>
             {pending.length > 0 && (
               <div className="sq-stack" style={{ marginTop: 16 }}>
                 {pending.map((a) => (
@@ -728,6 +711,25 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
                 </div>
                 <Btn variant="primary" icon={PackagePlus} onClick={() => { resetAddStock(); setAddStockOpen(true); }}>Add stock item</Btn>
               </div>
+              {stockTier === "USABLE" && (
+                <div className="sq-grid cols-3" style={{ marginBottom: 16 }}>
+                  <div className="sq-card sq-pool">
+                    <div className="sq-pool-head"><PackagePlus size={16} /> New devices</div>
+                    <Bar label="In stock" value={pool.NEW} max={pool.total || 1} sub={`${pool.NEW} of ${pool.total}`} tone="ok" />
+                    <div className="sq-cell-desc">Brand-new inventory — issued only with Superuser acceptance.</div>
+                  </div>
+                  <div className="sq-card sq-pool">
+                    <div className="sq-pool-head"><Wrench size={16} /> Repaired devices</div>
+                    <Bar label="In stock" value={pool.REPAIRED} max={pool.total || 1} sub={`${pool.REPAIRED} of ${pool.total}`} tone="info" />
+                    <div className="sq-cell-desc">Returned and repaired units, ready to loan out.</div>
+                  </div>
+                  <div className="sq-card sq-pool">
+                    <div className="sq-pool-head"><Boxes size={16} /> Used devices</div>
+                    <Bar label="In stock" value={pool.USED} max={pool.total || 1} sub={`${pool.USED} of ${pool.total}`} tone="warn" />
+                    <div className="sq-cell-desc">Working stock returned from employees — used for short-term loans.</div>
+                  </div>
+                </div>
+              )}
               {stockRows.length === 0 ? (
                 <Empty icon={Archive} title={`Nothing ${stockTier === "USABLE" ? "usable" : stockTier === "NOT_USABLE" ? "marked not usable" : "scrapped"} yet`}
                   hint={stockTier === "USABLE" ? "Add stock to start tracking it here." : "Items move here from the tier above."} />
@@ -1064,7 +1066,7 @@ export default function TechDashboard({ ds, user, notify, onSignOut, homeTick })
             </label>
             <label className="sq-field"><span className="sq-label">Storage location</span>
               <select className="sq-input" value={stockStorage} onChange={(e) => setStockStorage(e.target.value)}>
-                {STORAGE_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+                {STOCK_STORAGE_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
             </label>
           </div>

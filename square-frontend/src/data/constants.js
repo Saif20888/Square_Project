@@ -122,7 +122,9 @@ export const STORAGE_LOCATIONS = ["IT Closet", "Basement", "Sector 3", "IT Backu
 export const STOCK_CATEGORIES = ["COMPUTER", "LAPTOP", "PRINTER", "OTHER"];
 export const STOCK_CATEGORY_LABEL = { COMPUTER: "Computer", LAPTOP: "Laptop", PRINTER: "Printer", OTHER: "Other" };
 export const STOCK_CONDITIONS = ["NEW", "USED"];
-export const STOCK_DEFAULT_STORAGE = "IT Backup Support";
+// The 3 bays inside the "IT Backup Support" storage room — bulk stock only.
+export const STOCK_STORAGE_LOCATIONS = ["F11 Storage", "B2 Storage", "S3 Storage"];
+export const STOCK_DEFAULT_STORAGE = STOCK_STORAGE_LOCATIONS[0];
 // Mirrors StockCategory.isAsset() on the backend — everything but OTHER is an asset.
 export const stockAssetCategory = (category) => (category === "OTHER" ? "NON_ASSET" : "ASSET");
 // True for a bulk stock row (no serial number) as opposed to a serialized device.
