@@ -82,8 +82,13 @@ public class BackendApplication {
     @Profile("!prod & !test")
     CommandLineRunner initSystemEnvironment(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
                                             LocationRepository locationRepo, DepartmentRepository departmentRepo,
-                                            @Value("${DEMO_PASSWORD:}") String configuredDemoPassword) {
-        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo, configuredDemoPassword);
+                                            @Value("${DEMO_PASSWORD:}") String configuredDemoPassword,
+                                            @Value("${DEMO_PW_RAFIQ:}") String rafiqPassword,
+                                            @Value("${DEMO_PW_MANAGER1:}") String managerPassword,
+                                            @Value("${DEMO_PW_TECH1:}") String techPassword,
+                                            @Value("${DEMO_PW_ADMIN1:}") String adminPassword) {
+        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo,
+                configuredDemoPassword, rafiqPassword, managerPassword, techPassword, adminPassword);
     }
 
     /**
@@ -102,13 +107,24 @@ public class BackendApplication {
     @ConditionalOnProperty(name = "ENABLE_DEMO_SEED", havingValue = "true")
     CommandLineRunner seedDemoDataInProd(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
                                          LocationRepository locationRepo, DepartmentRepository departmentRepo,
-                                         @Value("${DEMO_PASSWORD:}") String configuredDemoPassword) {
-        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo, configuredDemoPassword);
+                                         @Value("${DEMO_PASSWORD:}") String configuredDemoPassword,
+                                         @Value("${DEMO_PW_RAFIQ:}") String rafiqPassword,
+                                         @Value("${DEMO_PW_MANAGER1:}") String managerPassword,
+                                         @Value("${DEMO_PW_TECH1:}") String techPassword,
+                                         @Value("${DEMO_PW_ADMIN1:}") String adminPassword) {
+        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo,
+                configuredDemoPassword, rafiqPassword, managerPassword, techPassword, adminPassword);
+    }
+
+    // Falls back to the shared demo password when a per-account override isn't set.
+    private static String pick(String override, String fallback) {
+        return override == null || override.isBlank() ? fallback : override;
     }
 
     private void seedDemoData(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
                               LocationRepository locationRepo, DepartmentRepository departmentRepo,
-                              String configuredDemoPassword) {
+                              String configuredDemoPassword, String rafiqPassword, String managerPassword,
+                              String techPassword, String adminPassword) {
             // No demo password is written in this file. Set DEMO_PASSWORD to choose
             // one; otherwise a random one is generated and printed below, once, so
             // that nothing sign-in-able ever lives in version control.
@@ -133,11 +149,11 @@ public class BackendApplication {
                 userRepo.save(withProfile(new User("saif", demoPassword, "EMPLOYEE"), "Md Saif Shahriar", "Senior Executive", "manager1", 900, "Design and Product Development"));
                 userRepo.save(withProfile(new User("raihan", demoPassword, "EMPLOYEE"), "Raihan Kabir", "Executive", "manager1", 1500, "Commercial"));
                 userRepo.save(withProfile(new User("nusrat", demoPassword, "EMPLOYEE"), "Nusrat Jahan", "Officer", "manager1", 420, "Marketing and Merchandising"));
-                userRepo.save(withProfile(new User("manager1", demoPassword, "SUPERVISOR"), "Rumana Karim", "Manager", null, 3200, "HR and Admin"));
-                userRepo.save(withProfile(new User("tech1", demoPassword, "IT_TECH"), "Arif Chowdhury", "Executive", null, 2100, "HR and Admin"));
+                userRepo.save(withProfile(new User("manager1", pick(managerPassword, demoPassword), "SUPERVISOR"), "Rumana Karim", "Manager", null, 3200, "HR and Admin"));
+                userRepo.save(withProfile(new User("tech1", pick(techPassword, demoPassword), "IT_TECH"), "Arif Chowdhury", "Executive", null, 2100, "HR and Admin"));
                 // admin1 may already exist as the prod bootstrap admin (ADMIN_USERNAME) — don't collide with it.
                 if (userRepo.findByUsername("admin1").isEmpty()) {
-                    userRepo.save(withProfile(new User("admin1", demoPassword, "SYSTEM_ADMIN"), "Nadia Rahman", "Senior Manager", null, 2800, "HR and Admin"));
+                    userRepo.save(withProfile(new User("admin1", pick(adminPassword, demoPassword), "SYSTEM_ADMIN"), "Nadia Rahman", "Senior Manager", null, 2800, "HR and Admin"));
                 }
 
                 // Wider org chart — a second supervisor with her own reports, plus more IT Team members
@@ -160,7 +176,8 @@ public class BackendApplication {
                 for (int i = 0; i < GEN_FIRST.length; i++) {
                     String username = GEN_FIRST[i].toLowerCase();
                     String name = GEN_FIRST[i] + " " + GEN_LAST[i % GEN_LAST.length];
-                    userRepo.save(withProfile(new User(username, demoPassword, "EMPLOYEE"), name, GEN_TITLES[i % GEN_TITLES.length], "manager1", 250 + i * 137, DEPARTMENTS[i % DEPARTMENTS.length]));
+                    String password = username.equals("rafiq") ? pick(rafiqPassword, demoPassword) : demoPassword;
+                    userRepo.save(withProfile(new User(username, password, "EMPLOYEE"), name, GEN_TITLES[i % GEN_TITLES.length], "manager1", 250 + i * 137, DEPARTMENTS[i % DEPARTMENTS.length]));
                 }
 
                 // Fillers — complete every department's required designation ladder
