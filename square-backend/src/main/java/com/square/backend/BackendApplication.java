@@ -15,6 +15,7 @@ import com.square.backend.repository.UserRepository;
 import com.square.backend.web.Validate;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -82,7 +83,32 @@ public class BackendApplication {
     CommandLineRunner initSystemEnvironment(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
                                             LocationRepository locationRepo, DepartmentRepository departmentRepo,
                                             @Value("${DEMO_PASSWORD:}") String configuredDemoPassword) {
-        return args -> {
+        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo, configuredDemoPassword);
+    }
+
+    /**
+     * Opt-in demo seeding for a prod-profile deployment used purely to showcase
+     * the app (e.g. a portfolio demo on Render/Vercel) — never for a real
+     * production system. Off unless ENABLE_DEMO_SEED=true is set explicitly; a
+     * real deployment simply never sets it and gets the hardened
+     * {@link #initProductionEnvironment} behavior below instead.
+     *
+     * Layers on top of whatever {@code initProductionEnvironment} already
+     * created (it checks for "manager1" rather than an empty users table), so
+     * a bootstrap admin created before this flag was turned on is left alone.
+     */
+    @Bean
+    @Profile("prod")
+    @ConditionalOnProperty(name = "ENABLE_DEMO_SEED", havingValue = "true")
+    CommandLineRunner seedDemoDataInProd(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
+                                         LocationRepository locationRepo, DepartmentRepository departmentRepo,
+                                         @Value("${DEMO_PASSWORD:}") String configuredDemoPassword) {
+        return args -> seedDemoData(userRepo, ticketRepo, assetRepo, locationRepo, departmentRepo, configuredDemoPassword);
+    }
+
+    private void seedDemoData(UserRepository userRepo, TicketRepository ticketRepo, AssetRepository assetRepo,
+                              LocationRepository locationRepo, DepartmentRepository departmentRepo,
+                              String configuredDemoPassword) {
             // No demo password is written in this file. Set DEMO_PASSWORD to choose
             // one; otherwise a random one is generated and printed below, once, so
             // that nothing sign-in-able ever lives in version control.
@@ -100,14 +126,19 @@ public class BackendApplication {
                 for (String d : DEPARTMENTS) departmentRepo.save(Department.builder().name(d).build());
             }
 
-            // Seed Authentication Directory + org chart (managerUsername links reports to their supervisor)
-            if (userRepo.count() == 0) {
+            // Seed Authentication Directory + org chart (managerUsername links reports to their supervisor).
+            // Checked by username, not a blanket count == 0, so this still runs even
+            // when initProductionEnvironment already created a lone bootstrap admin.
+            if (userRepo.findByUsername("manager1").isEmpty()) {
                 userRepo.save(withProfile(new User("saif", demoPassword, "EMPLOYEE"), "Md Saif Shahriar", "Senior Executive", "manager1", 900, "Design and Product Development"));
                 userRepo.save(withProfile(new User("raihan", demoPassword, "EMPLOYEE"), "Raihan Kabir", "Executive", "manager1", 1500, "Commercial"));
                 userRepo.save(withProfile(new User("nusrat", demoPassword, "EMPLOYEE"), "Nusrat Jahan", "Officer", "manager1", 420, "Marketing and Merchandising"));
                 userRepo.save(withProfile(new User("manager1", demoPassword, "SUPERVISOR"), "Rumana Karim", "Manager", null, 3200, "HR and Admin"));
                 userRepo.save(withProfile(new User("tech1", demoPassword, "IT_TECH"), "Arif Chowdhury", "Executive", null, 2100, "HR and Admin"));
-                userRepo.save(withProfile(new User("admin1", demoPassword, "SYSTEM_ADMIN"), "Nadia Rahman", "Senior Manager", null, 2800, "HR and Admin"));
+                // admin1 may already exist as the prod bootstrap admin (ADMIN_USERNAME) — don't collide with it.
+                if (userRepo.findByUsername("admin1").isEmpty()) {
+                    userRepo.save(withProfile(new User("admin1", demoPassword, "SYSTEM_ADMIN"), "Nadia Rahman", "Senior Manager", null, 2800, "HR and Admin"));
+                }
 
                 // Wider org chart — a second supervisor with her own reports, plus more IT Team members
                 userRepo.save(withProfile(new User("tanvir", demoPassword, "EMPLOYEE"), "Tanvir Ahmed", "Executive", "manager1", 1100, "Accounts and Finance"));
@@ -471,7 +502,6 @@ public class BackendApplication {
                 System.out.println(" Set DEMO_PASSWORD to choose your own next time.");
                 System.out.println("====================================================");
             }
-        };
     }
 
     /**
