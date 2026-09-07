@@ -35,13 +35,16 @@ export const DESIGNATIONS = [
 // Company leadership shown in the view-only "Top essentials" section
 export const TOP_DESIGNATIONS = ["Executive Director", "Director"];
 
-// Every department MUST have each of these exactly once (error when adding a second)...
-export const UNIQUE_DESIGNATIONS = [
-  "General Manager (GM)", "Deputy General Manager (DGM)", "Assistant General Manager (AGM)",
-  "Senior Manager", "Manager", "Deputy Manager", "Assistant Manager",
-];
-// ...and at least one of each of these (more allowed)
-export const COMMON_DESIGNATIONS = ["Senior Executive", "Executive", "Officer", "Assistant Officer", "Office Assistant"];
+// Disabled 2026-09-07 — was: every department MUST have each of these exactly
+// once (error when adding a second) ...and at least one of each of the common
+// ones below (more allowed). Restore by uncommenting the two arrays.
+// export const UNIQUE_DESIGNATIONS = [
+//   "General Manager (GM)", "Deputy General Manager (DGM)", "Assistant General Manager (AGM)",
+//   "Senior Manager", "Manager", "Deputy Manager", "Assistant Manager",
+// ];
+// export const COMMON_DESIGNATIONS = ["Senior Executive", "Executive", "Officer", "Assistant Officer", "Office Assistant"];
+export const UNIQUE_DESIGNATIONS = [];
+export const COMMON_DESIGNATIONS = [];
 
 // "HR and Admin" is an umbrella department made of three units
 export const HR_ADMIN_DEPT = "HR and Admin";
